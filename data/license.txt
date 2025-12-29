@@ -1,0 +1,65 @@
+- EN 
+Multi-Sensor License – Private Use Only
+
+Copyright (c) 2025 Da Schwede
+
+Permission is hereby granted to use this software and its source code
+for PRIVATE and NON-COMMERCIAL purposes only.
+
+The following is NOT permitted without explicit written permission
+from the copyright holder:
+
+- Any commercial use
+- Selling, sublicensing, or distributing this software or parts of it
+- Using this software or parts of it in commercial products or services
+- Using this software or parts of it for paid services, installations,
+  or consulting
+- Republishing modified or unmodified versions for commercial purposes
+
+This software is provided "as is", without warranty of any kind,
+express or implied, including but not limited to the warranties of
+merchantability, fitness for a particular purpose and noninfringement.
+In no event shall the authors be liable for any claim, damages or other
+liability, whether in an action of contract, tort or otherwise,
+arising from, out of or in connection with the software or the use or
+other dealings in the software.
+
+For commercial licensing, please contact:
+Da Schwede
+
+--
+
+- DE
+
+Multi-Sensor Lizenz – Nur private Nutzung
+
+Copyright (c) 2025 Da Schwede
+
+Hiermit wird die Erlaubnis erteilt, diese Software und ihren Quellcode
+ausschließlich für PRIVATE und NICHT-KOMMERZIELLE Zwecke zu nutzen.
+
+Folgendes ist ohne ausdrückliche schriftliche Genehmigung
+des Urhebers NICHT gestattet:
+
+- Jegliche kommerzielle Nutzung
+- Verkauf, Unterlizenzierung oder Weiterverbreitung dieser Software
+  oder von Teilen davon
+- Nutzung dieser Software oder von Teilen davon in kommerziellen
+  Produkten oder Dienstleistungen
+- Nutzung dieser Software oder von Teilen davon für entgeltliche
+  Dienstleistungen, Installationen oder Beratungen
+- Veröffentlichung, Weitergabe oder Verwertung von veränderten oder
+  unveränderten Versionen zu kommerziellen Zwecken
+
+Diese Software wird „wie sie ist“ bereitgestellt, ohne jegliche
+Gewährleistung, ausdrücklich oder stillschweigend, einschließlich,
+aber nicht beschränkt auf die Gewährleistung der Marktgängigkeit,
+Eignung für einen bestimmten Zweck und Nichtverletzung von Rechten.
+
+In keinem Fall haften der Autor oder die Mitwirkenden für Ansprüche,
+Schäden oder sonstige Verpflichtungen, gleichgültig ob aus Vertrag,
+unerlaubter Handlung oder anderweitig, die aus der Nutzung dieser
+Software oder im Zusammenhang mit dieser Software entstehen.
+
+Für eine kommerzielle Lizenzierung wenden Sie sich bitte an:
+Da Schwede

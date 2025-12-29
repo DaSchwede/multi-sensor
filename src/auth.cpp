@@ -17,7 +17,7 @@ static String uiHeader(const String& title, bool showLogout = false) {
     "<meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
     "<link rel='stylesheet' href='/style.css'>"
-    "<title>" + title + "</title>"
+    "<title>"+ title + "</title>"
     "</head><body>"
     "<div class='topbar'>Multi-Sensor</div>"
     "<div class='menubar'>"
@@ -147,24 +147,38 @@ void handleForcePassword(ESP8266WebServer &server, AppConfig &cfg) {
 void handleLogin(ESP8266WebServer &server, AppConfig &cfg) {
   String err = "";
 
+  bool doLogin = false;
+
   if (server.method() == HTTP_POST) {
     String user = server.arg("user");
     String pass = server.arg("pass");
 
+    // 1) Benutzer/Passwort prüfen
     if (user == cfg.admin_user && sha1Hex(pass) == cfg.admin_pass_hash) {
+      doLogin = true;
+    } else {
+      err = "Login fehlgeschlagen (User/Passwort falsch).";
+    }
+
+    // Lizenz MUSS akzeptiert werden
+  if (!server.hasArg("license_ok")) {
+      err = "Bitte Lizenz akzeptieren, um fortzufahren.";
+      doLogin = false;
+    }
+    // 3) Erfolgreich → Session setzen
+    if (doLogin) {
       sessionToken = randomToken();
       server.sendHeader(
         "Set-Cookie",
         String(COOKIE_NAME) + "=" + sessionToken + "; Path=/; Max-Age=86400; SameSite=Lax"
       );
       server.sendHeader("Location", "/", true);
-      server.send(303, "text/plain", "");
+      server.send(302, "text/plain", "");
       return;
-    } else {
-      err = "Login fehlgeschlagen (User/Passwort falsch).";
     }
   }
 
+  // ===== Render Login-Seite =====
   String html = uiHeader("Login");
   html += "<h2>Login</h2>";
 
@@ -172,25 +186,36 @@ void handleLogin(ESP8266WebServer &server, AppConfig &cfg) {
     html += "<p style='color:#b00020; font-weight:700;'>" + err + "</p>";
   }
 
+  html += "<form method='POST'>";
+
   html +=
-    "<form method='POST'>"
-      "<div class='form-row'><label>Benutzer</label>"
-      "<input name='user' value='admin' required></div>"
+    "<div class='form-row'><label>Benutzer</label>"
+    "<input name='user' value='admin' required></div>"
 
-      "<div class='form-row'><label>Passwort</label>"
-      "<input name='pass' type='password' required></div>"
+    "<div class='form-row'><label>Passwort</label>"
+    "<input name='pass' type='password' required></div>";
 
-      "<div class='actions'>"
-        "<button class='btn-primary' type='submit'>Anmelden</button>"
+  // ✅ Lizenz-Checkbox OPTIONAL
+    html +=
+      "<div class='form-row'>"
+      "<div class='checkline'>"
+      "<input type='checkbox' id='license_ok' name='license_ok' required>"
+      "<label for='license_ok'>Ich akzeptiere die <a href='/license'>Lizenzbedingungen</a>.</label>"
       "</div>"
+      "<div class='small'>Ohne Zustimmung ist kein Login möglich.</div>"
+    "</div>";
+  
+
+  html +=
+    "<div class='actions'>"
+    "<button class='btn-primary' type='submit'>Anmelden</button>"
+    "</div>"
     "</form>";
 
   html += uiFooter();
 
   server.send(200, "text/html; charset=utf-8", html);
 }
-
-
 
 void handleLogout(ESP8266WebServer &server) {
   sessionToken = "";

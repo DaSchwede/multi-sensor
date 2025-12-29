@@ -4,11 +4,41 @@
 #include "version.h"
 #include "ntp_time.h"
 #include "web_server.h"
+#include "settings.h"
 
 static AppConfig* gCfg = nullptr;
 static SensorData* gLive = nullptr;
 static uint32_t* gLastReadMs = nullptr;
 static uint32_t* gLastSendMs = nullptr;
+
+// ===== Card Builder =====
+static String cardSystem();
+static String cardNetzwerk();
+static String cardSensor();
+static String cardSpeicher();
+static String cardZeit();
+static String cardAktuelleEinstellungen();
+
+// ===== Helper =====
+static std::vector<String> splitCsv(const String& csv) {
+  std::vector<String> out;
+  int start = 0;
+
+  while (true) {
+    int idx = csv.indexOf(',', start);
+    if (idx < 0) {
+      String part = csv.substring(start);
+      part.trim();
+      if (part.length()) out.push_back(part);
+      break;
+    }
+    String part = csv.substring(start, idx);
+    part.trim();
+    if (part.length()) out.push_back(part);
+    start = idx + 1;
+  }
+  return out;
+}
 
 void pagesInit(AppConfig &cfg,
                SensorData *liveData,
@@ -31,6 +61,83 @@ static String uptimeString() {
   return String(buf);
 }
 
+static String loadLicenseText() {
+  if (LittleFS.exists("/license.txt")) {
+    File f = LittleFS.open("/license.txt", "r");
+    String s = f.readString();
+    f.close();
+    return s;
+  }
+
+  // Fallback, falls Datei fehlt
+  return String(
+    "license.txt nicht gefunden.\n"
+    "Bitte LittleFS hochladen: pio run -t uploadfs\n"
+  );
+}
+
+// Card-System
+static String cardSystem() {
+  String h;
+  h += "<div class='card'><h2>System</h2><table class='tbl'>";
+  h += "<tr><th>Firmware</th><td>" + String(FW_VERSION) + "</td></tr>";
+  h += "<tr><th>Chip ID</th><td>" + String(ESP.getChipId(), HEX) + "</td></tr>";
+  h += "<tr><th>CPU</th><td>" + String(ESP.getCpuFreqMHz()) + " MHz</td></tr>";
+  h += "</table></div>";
+  return h;
+}
+
+// Card-Netzwerk
+static String cardNetzwerk() {
+  String h;
+  h += "<div class='card'><h2>Netzwerk</h2><table class='tbl'>";
+  h += "<tr><th>SSID</th><td>" + WiFi.SSID() + "</td></tr>";
+  h += "<tr><th>IP</th><td>" + WiFi.localIP().toString() + "</td></tr>";
+  h += "<tr><th>RSSI</th><td>" + String(WiFi.RSSI()) + " dBm</td></tr>";
+  h += "</table></div>";
+  return h;
+}
+
+// Card-Sensor
+static String cardSensor() {
+  String h;
+  h += "<div class='card'><h2>Sensor</h2><table class='tbl'>";
+  h += "<tr><th>Temperatur</th><td>" + String(gLive->temperature_c, 1) + " °C</td></tr>";
+  h += "<tr><th>Feuchte</th><td>" + String(gLive->humidity_rh, 1) + " %</td></tr>";
+  h += "<tr><th>Druck</th><td>" + String(gLive->pressure_hpa, 1) + " hPa</td></tr>";
+  h += "</table></div>";
+  return h;
+}
+
+// Card-Speicher
+static String cardSpeicher() {
+  String h;
+  h += "<div class='card'><h2>Speicher</h2><table class='tbl'>";
+  h += "<tr><th>Free Heap</th><td>" + String(ESP.getFreeHeap()) + " B</td></tr>";
+  h += "<tr><th>Max Block</th><td>" + String(ESP.getMaxFreeBlockSize()) + " B</td></tr>";
+  h += "</table></div>";
+  return h;
+}
+
+// Card-Zeit
+static String cardZeit() {
+  String h;
+  h += "<div class='card'><h2>Zeit</h2><table class='tbl'>";
+  h += "<tr><th>NTP gültig</th><td>" + String(ntpIsValid() ? "Ja" : "Nein") + "</td></tr>";
+  h += "<tr><th>Lokal</th><td>" + ntpDateTimeString(*gCfg) + "</td></tr>";
+  h += "</table></div>";
+  return h;
+}
+
+// Card-AktuelleEinstellungen
+static String cardAktuelleEinstellungen() {
+  String h;
+  h += "<div class='card'><h2>Aktuelle Einstellungen</h2><table class='tbl'>";
+  h += "<tr><th>Sensor-ID</th><td>" + gCfg->sensor_id + "</td></tr>";
+  h += "<tr><th>Intervall</th><td>" + String(gCfg->send_interval_ms) + " ms</td></tr>";
+  h += "</table></div>";
+  return h;
+}
 
 static String navLink(const String& href, const String& label, const String& current) {
   String cls = (href == current) ? "active" : "";
@@ -42,7 +149,7 @@ static String headerHtml(const String &title, const String &currentPath) {
     "<!doctype html><html><head><meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
     "<link rel='stylesheet' href='/style.css'>"
-    "<title>") + title + "</title></head><body>"
+    "<title>Multi-Sensor - " + title + "</title></head><body>"
     "<div class='topbar'>Multi-Sensor</div>"
     "<div class='menubar'>"
       + navLink("/", "Startseite", currentPath)
@@ -51,7 +158,40 @@ static String headerHtml(const String &title, const String &currentPath) {
       + navLink("/about", "Über", currentPath)
       + "<span class='right'><a href='/logout'>Abmelden</a></span>"
     "</div>"
-    "<div class='content'>";
+    "<div class='content'>"
+  );
+}
+
+static String headerHtmlPublic(ESP8266WebServer &server,
+                               const String &title,
+                               const String &currentPath) {
+  bool authed = isAuthenticated(server);
+
+  String menu;
+  if (authed) {
+    menu =
+      navLink("/", "Startseite", currentPath) +
+      navLink("/info", "Info", currentPath) +
+      navLink("/settings", "Einstellungen", currentPath) +
+      navLink("/about", "Über", currentPath) +
+      navLink("/license", "Lizenz", currentPath) +
+      "<span class='right'><a href='/logout'>Abmelden</a></span>";
+  } else {
+    menu =
+      navLink("/login", "Login", currentPath) +
+      navLink("/license", "Lizenz", currentPath) +
+      "<span class='right'><a href='/login'>Anmelden</a></span>";
+  }
+
+  return String(
+    "<!doctype html><html><head><meta charset='utf-8'>"
+    "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+    "<link rel='stylesheet' href='/style.css'>"
+    "<title>Multi-Sensor - " + title + "</title></head><body>"
+    "<div class='topbar'>Multi-Sensor</div>"
+    "<div class='menubar'>" + menu + "</div>"
+    "<div class='content'>"
+  );
 }
 
 static String footerHtml() { return "</div></body></html>"; }
@@ -61,7 +201,23 @@ void pageRoot(ESP8266WebServer &server) {
 
   String html = headerHtml("Startseite", "/");
 
-  html += "<div class='grid'>";
+  String left, right;
+
+// linke Spalte
+  left += cardSystem();
+  left += cardNetzwerk();
+  left += cardSensor();
+
+// rechte Spalte
+  right += cardSpeicher();
+  right += cardZeit();
+  right += cardAktuelleEinstellungen();
+
+  html += "<div class='columns'>";
+  html += "<div class='col'>" + left + "</div>";
+  html += "<div class='col'>" + right + "</div>";
+  html += "</div>";
+
 
   // Sensordaten
   html += "<div class='card'><h2>Sensordaten (live)</h2>";
@@ -111,7 +267,6 @@ bool wifiOk = (WiFi.status() == WL_CONNECTED);
   html += "</table>";
   html += "</div>";
 
-  html += "</div>"; // grid
   html += R"JS(
 <script>
 function fmt(v, unit){
@@ -156,7 +311,38 @@ void pageInfo(ESP8266WebServer &server) {
 
   String html = headerHtml("Info", "/info");
 
-  html += "<div class='grid'>";
+  auto order = splitCsv(gCfg->ui_info_order); // helper
+  String left, right;
+  int idx = 0;
+
+    for (auto &id : order) {
+    String card;
+    if (id == "system")   card = cardSystem();
+    else if (id == "network") card = cardNetzwerk();
+    else if (id == "sensor")  card = cardSensor();
+    else if (id == "memory")  card = cardSpeicher();
+    else if (id == "time")    card = cardZeit();
+    else if (id == "settings")card = cardAktuelleEinstellungen();
+
+    if (card.length()) {
+        (idx++ % 2 == 0 ? left : right) += card;
+    }
+    }
+// linke Spalte
+left += cardSystem();
+left += cardNetzwerk();
+left += cardSensor();
+
+// rechte Spalte
+right += cardSpeicher();
+right += cardZeit();
+right += cardAktuelleEinstellungen();
+
+html += "<div class='columns'>";
+html += "<div class='col'>" + left + "</div>";
+html += "<div class='col'>" + right + "</div>";
+html += "</div>";
+
 
   // ===== System =====
   html += "<div class='card'><h2>System</h2><table class='tbl'>";
@@ -200,8 +386,8 @@ void pageInfo(ESP8266WebServer &server) {
   html += "<tr><th>I2C</th><td>0x76</td></tr>";
   html += "</table></div>";
 
-  // Aktuelle Einstellungen
-  html += "<div class='card'><h2>Aktuelle Einstellungen</h2>";
+  // Loxone Einstellungen
+  html += "<div class='card'><h2>Loxone Einstellungen</h2>";
   html += "<table class='tbl'>";
   html += "<tr><th>Loxone</th><td class='value'>" + gCfg->loxone_ip + ":" + String(gCfg->loxone_udp_port) + "</td></tr>";
   html += "<tr><th>Intervall</th><td class='value'>" + String(gCfg->send_interval_ms) + " ms</td></tr>";
@@ -209,8 +395,6 @@ void pageInfo(ESP8266WebServer &server) {
   html += "<tr><th>NTP</th><td class='value'>" + gCfg->ntp_server + "</td></tr>";
   html += "</table>";
   html += "</div>";
-
-  html += "</div>"; // grid
 
   html += footerHtml();
   server.send(200, "text/html", html);
@@ -227,6 +411,7 @@ void pageSettings(ESP8266WebServer &server) {
     gCfg->sensor_id = server.arg("sensor_id");
     gCfg->ntp_server = server.arg("ntp_server");
     gCfg->tz_auto_berlin = server.hasArg("tz_auto_berlin");
+    gCfg->license_require_accept = server.hasArg("license_require_accept");
 
     if (!gCfg->tz_auto_berlin) {
     gCfg->tz_base_seconds = server.arg("tz_base_seconds").toInt();
@@ -261,7 +446,7 @@ ntpBegin(*gCfg);
         "</script>";
 
   html += "<form method='POST'>";
-
+// Loxone
   html += "<div class='card'><h2>Loxone</h2>";
   html += "<div class='form-row'><label>Miniserver IP</label>"
           "<input name='loxone_ip' value='" + gCfg->loxone_ip + "'></div>";
@@ -275,7 +460,7 @@ ntpBegin(*gCfg);
   html += "<div class='form-row'><label>Sensor-ID</label>"
           "<input name='sensor_id' value='" + gCfg->sensor_id + "'></div>";
   html += "</div>";
-
+// NTP
   html += "<div class='card'><h2>NTP / Zeitzone</h2>";
 
   html += "<div class='form-row'><label>NTP Server</label>"
@@ -295,7 +480,23 @@ ntpBegin(*gCfg);
         "<input name='dst_add_seconds' value='" + String(gCfg->dst_add_seconds) + "'></div>";
 
   html += "</div>";
+// Checkbox
+//  html += "<div class='card'><h2>Sicherheit</h2>";
 
+//  html += "<div class='form-row'>"
+//        "<label>"
+//        "<input type='checkbox' name='license_require_accept' "
+//        + String(gCfg->license_require_accept ? "checked" : "") +
+//        "> Lizenz beim Login bestätigen"
+//        "</label>"
+//        "<div class='small'>"
+//        "Zeigt auf der Login-Seite eine Pflicht-Checkbox zur Lizenz."
+//        "</div>"
+//        "</div>";
+
+// html += "</div>";
+
+// Admin Passwort
   html += "<div class='card'><h2>Admin</h2>";
   html += "<div class='form-row'><label>Neues Passwort</label>"
           "<input type='password' name='new_pass' placeholder='(leer lassen = unverändert)'></div>";
@@ -329,6 +530,7 @@ void pageAbout(ESP8266WebServer &server) {
   html += "<tr><th>Build-Datum</th><td>" + String(FW_DATE) + "</td></tr>";
   html += "<tr><th>Autor</th><td>" + String(FW_AUTHOR) + "</td></tr>";
   html += "<tr><th>Copyright</th><td>" + String(FW_COPYRIGHT) + "</td></tr>";
+  html += "<tr><th>Lizenz</th><td><a href='/license'>anzeigen</a></td></tr>";
   html += "</table>";
 
   html += "<p class='small' style='margin-top:14px;'>"
@@ -420,6 +622,25 @@ void pageFactoryResetDo(ESP8266WebServer &server) {
   delay(300);
   ESP.restart();
 }
+
+void pageLicense(ESP8266WebServer &server) {
+  String html = headerHtmlPublic(server, "Lizenz", "/license");
+
+  html += "<div class='card'><h2>Lizenz</h2>";
+  html += "<pre style='white-space:pre-wrap; font-size:13px; line-height:1.35;'>";
+  html += loadLicenseText();   // ✅ jetzt genutzt
+  html += "</pre>";
+
+  html += "<div class='actions'>"
+          "<a class='btn btn-secondary' href='/about'>Zurück</a>"
+          "</div>";
+
+  html += "</div>";
+  html += footerHtml();
+
+  server.send(200, "text/html; charset=utf-8", html);
+}
+
 
 void apiLive(ESP8266WebServer &server) {
   if (!requireAuth(server, *gCfg)) return;

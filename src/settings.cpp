@@ -51,12 +51,19 @@ bool loadConfig(AppConfig &cfg) {
 
   cfg.udp_format = doc["udp_format"] | cfg.udp_format;
 
+  cfg.license_require_accept = doc["license_require_accept"] | cfg.license_require_accept;
+
   cfg.admin_user = doc["admin_user"] | cfg.admin_user;
 
   cfg.admin_pass_hash = doc["admin_pass_hash"] | defaultAdminHash();
   cfg.force_pw_change = doc["force_pw_change"] | true;
 
   cfg.mqtt_enabled = doc["mqtt_enabled"] | cfg.mqtt_enabled;
+
+  cfg.ui_info_order = doc["ui_info_order"] | cfg.ui_info_order;
+  cfg.ui_info_hide  = doc["ui_info_hide"]  | cfg.ui_info_hide;
+  cfg.ui_home_order = doc["ui_home_order"] | cfg.ui_home_order;
+  cfg.ui_home_hide  = doc["ui_home_hide"]  | cfg.ui_home_hide;
 
   return true;
 }
@@ -77,11 +84,19 @@ bool saveConfig(const AppConfig &cfg) {
 
   doc["udp_format"] = cfg.udp_format;
 
+  doc["license_require_accept"] = cfg.license_require_accept;
+
   doc["admin_user"] = cfg.admin_user;
   doc["admin_pass_hash"] = cfg.admin_pass_hash;   // 🔴 WICHTIG
   doc["force_pw_change"] = cfg.force_pw_change;
 
   doc["mqtt_enabled"] = cfg.mqtt_enabled;
+
+  doc["ui_info_order"] = cfg.ui_info_order;
+  doc["ui_info_hide"]  = cfg.ui_info_hide;
+  doc["ui_home_order"] = cfg.ui_home_order;
+  doc["ui_home_hide"]  = cfg.ui_home_hide;
+
 
   File f = LittleFS.open(CFG_FILE, "w");
   if (!f) return false;

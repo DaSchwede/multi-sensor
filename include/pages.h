@@ -19,6 +19,7 @@ void pageRestoreForm(ESP8266WebServer &server);
 void pageRestoreUpload(ESP8266WebServer &server);
 void pageFactoryResetForm(ESP8266WebServer &server);
 void pageFactoryResetDo(ESP8266WebServer &server);
+void pageLicense(ESP8266WebServer &server);
 
 // API
 void apiLive(ESP8266WebServer &server);

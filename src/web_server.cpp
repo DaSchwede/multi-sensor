@@ -20,6 +20,8 @@ void webServerBegin(ESP8266WebServer &server,
   // Auth-Routen (/login, /force_pw, /logout)
   authAttach(server, cfg);
 
+  server.on("/license", HTTP_GET, [&](){ pageLicense(server); });
+
   // API
   server.on("/api/live", HTTP_GET, [&](){ apiLive(server); });
 
