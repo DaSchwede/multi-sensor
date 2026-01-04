@@ -22,10 +22,13 @@ body{
   background:var(--brand);
   color:#fff;
   padding:18px 16px;
-  text-align:center;
   font-size:22px;
   font-weight:700;
   letter-spacing:.2px;
+
+  display:flex;              /* 🔥 wichtig */
+  align-items:center;        /* vertikal zentrieren */
+  gap:12px;                  /* Abstand Logo ↔ Text */
 }
 
 .menubar{ 
@@ -297,7 +300,10 @@ button, .btn{
   text-align:left;
 }
 
-.logo {
-  height: 40px;
-  width: auto;
+.logo{
+  height:75%;                /* ⭐ relativ zur Topbar */
+  max-height:80%;
+  min-height:60%;
+  width:auto;
+  display:block;
 }
