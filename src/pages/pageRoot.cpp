@@ -3,40 +3,34 @@
 #include "pages.h"
 #include "auth.h"
 
-void pageRoot(ESP8266WebServer &server) {
-  AppConfig* cfg = pagesCfg();
-  if (!cfg) { server.send(500, "text/plain", "cfg missing"); return; }
-  if (!requireAuth(server, *cfg)) return;
-
+static String cardLiveBox() {
   SensorData* live = pagesLive();
 
-  String html = pagesHeaderAuth("Startseite", "/");
-  html += "<div class='columns'>";
+  String h;
+  h += "<div class='card'><h2>Live</h2>";
+  h += "<div class='badge-row'><span id='sbadge' class='badge badge-ok'>Sensor OK</span></div>";  h += "<table class='tbl'>";
+  h += "<tr><th>Temperatur</th><td class='value' id='tval'>" + String(live ? live->temperature_c : 0, 2) + " °C</td></tr>";
+  h += "<tr><th>Feuchte</th><td class='value' id='hval'>" + String(live ? live->humidity_rh   : 0, 2) + " %</td></tr>";
+  h += "<tr><th>Druck</th><td class='value' id='pval'>" + String(live ? live->pressure_hpa  : 0, 2) + " hPa</td></tr>";
+  h += "</table>";
+  h += "<div class='small mt-8'>Aktualisiert automatisch.</div>";
+  h += "</div>";
+  return h;
+}
 
-  // Links: Live-Werte
-  html += "<div class='col'>";
-  html += "<div class='card'><h2>Live</h2>";
-  html += "<div style='margin: 6px 0 10px;'><span id='sbadge' class='badge badge-ok'>Sensor OK</span></div>";
+static String cardByIdRoot(const String &id) {
+  // Root darf alles anzeigen (du kannst es später einschränken)
+  if (id == "live")     return cardLiveBox();
+  if (id == "system")   return cardSystem();
+  if (id == "network")  return cardNetzwerk();
+  if (id == "sensor")   return cardSensor();
+  if (id == "memory")   return cardSpeicher();
+  if (id == "time")     return cardZeit();
+  if (id == "settings") return cardAktuelleEinstellungen();
+  return "";
+}
 
-  html += "<table class='tbl'>";
-  html += "<tr><th>Temperatur</th><td class='value' id='tval'>" + String(live ? live->temperature_c : 0, 2) + " °C</td></tr>";
-  html += "<tr><th>Feuchte</th><td class='value' id='hval'>" + String(live ? live->humidity_rh   : 0, 2) + " %</td></tr>";
-  html += "<tr><th>Druck</th><td class='value' id='pval'>" + String(live ? live->pressure_hpa  : 0, 2) + " hPa</td></tr>";
-  html += "</table>";
-
-  html += "<div class='small' style='margin-top:10px;'>Aktualisiert automatisch.</div>";
-  html += "</div>"; // card
-  html += "</div>"; // col
-
-  // Rechts: kurze Info-Kacheln (optional – kannst du tauschen)
-  html += "<div class='col'>";
-  html += cardNetzwerk();
-  html += cardZeit();
-  html += "</div>"; // col
-
-  html += "</div>"; // columns
-
-  // Auto-Refresh (ohne Reload)
+static void appendAutoRefreshJS(String &html) {
   html += R"JS(
 <script>
 function fmt(v, unit){
@@ -67,6 +61,48 @@ async function refreshLive(){
 setInterval(refreshLive, 5000);
 </script>
 )JS";
+}
+
+void pageRoot(ESP8266WebServer &server) {
+  AppConfig* cfg = pagesCfg();
+  if (!cfg) { server.send(500, "text/plain", "cfg missing"); return; }
+  if (!requireAuth(server, *cfg)) return;
+
+  String html = pagesHeaderAuth("Startseite", "/");
+
+  auto order = pagesSplitCsv(cfg->ui_root_order);
+
+  String left, right;
+  int idx = 0;
+  int unknown = 0;
+
+  for (auto &id : order) {
+    String card = cardByIdRoot(id);
+    if (card.length()) {
+      (idx++ % 2 == 0 ? left : right) += card;
+    } else {
+      unknown++;
+    }
+  }
+
+  // Fallback: Standard wenn leer / alles unknown
+  if (idx == 0) {
+    left  = cardLiveBox() + cardNetzwerk();
+    right = cardZeit();
+    unknown = 0;
+  }
+
+  html += "<div class='columns'>"
+          "<div class='col'>" + left + "</div>"
+          "<div class='col'>" + right + "</div>"
+          "</div>";
+
+  if (unknown > 0) {
+    html += "<div class='card'><p class='small'>Hinweis: " + String(unknown) +
+            " unbekannte ID(s) in ui_root_order wurden ignoriert.</p></div>";
+  }
+
+  appendAutoRefreshJS(html);
 
   html += pagesFooter();
   server.send(200, "text/html; charset=utf-8", html);

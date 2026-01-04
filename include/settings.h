@@ -26,7 +26,10 @@ struct AppConfig {
   // Sonstiges
   bool mqtt_enabled = false; // Platzhalter für später
 
-  String ui_info_order = "system,memory,network,time,sensor,cfg";
+  // UI-Reihenfolge (kommasepariert)
+  String ui_root_order = "live,network,time";
+  String ui_info_order = "system,network,sensor,memory,time,settings,cfg";
+
   String ui_info_hide  = ""; // kommasepariert, z.B. "memory,cfg"
   String ui_home_order = "live,network,time"; // Beispiel
   String ui_home_hide  = "";

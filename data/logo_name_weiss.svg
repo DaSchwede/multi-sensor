@@ -1,0 +1,32 @@
+<svg width="360" height="90" viewBox="0 0 360 90" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .white { fill:#ffffff; }
+      .dark  { fill:#2f2f2f; }
+      .line  { stroke:#ffffff; stroke-width:3; stroke-linecap:round; fill:none; }
+      .text  { font-family:'Segoe UI', Roboto, Arial, sans-serif; font-weight:700; }
+    </style>
+  </defs>
+
+  <!-- Außenkreis -->
+  <circle cx="45" cy="45" r="26" fill="none" stroke="#ffffff" stroke-width="4"/>
+
+  <!-- Zentralsensor -->
+  <circle cx="45" cy="45" r="5" class="white"/>
+
+  <!-- WiFi-Bögen -->
+  <path d="M 36.5147 36.5147 A 12 12 0 0 1 53.4853 36.5147" class="line"/>
+  <path d="M 31.5650 31.5650 A 19 19 0 0 1 58.4350 31.5650" class="line"/>
+
+  <!-- Netzwerkpunkte -->
+  <circle cx="34" cy="58" r="4" class="white"/>
+  <circle cx="56" cy="58" r="4" class="white"/>
+
+  <!-- Verbindungen -->
+  <line x1="34" y1="58" x2="45" y2="45" class="line"/>
+  <line x1="56" y1="58" x2="45" y2="45" class="line"/>
+
+  <!-- Text -->
+  <text x="95" y="55" font-size="30" class="text dark">Multi</text>
+  <text x="170" y="55" font-size="30" class="text white">Sensors</text>
+</svg>

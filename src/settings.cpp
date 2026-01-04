@@ -39,6 +39,9 @@ bool loadConfig(AppConfig &cfg) {
 
   // ----- ab hier doc benutzen -----
 
+  cfg.ui_root_order = doc["ui_root_order"] | cfg.ui_root_order;
+  cfg.ui_info_order = doc["ui_info_order"] | cfg.ui_info_order;
+
   cfg.loxone_ip = doc["loxone_ip"] | cfg.loxone_ip;
   cfg.loxone_udp_port = doc["loxone_udp_port"] | cfg.loxone_udp_port;
   cfg.send_interval_ms = doc["send_interval_ms"] | cfg.send_interval_ms;
@@ -71,6 +74,9 @@ bool loadConfig(AppConfig &cfg) {
 
 bool saveConfig(const AppConfig &cfg) {
   JsonDocument doc;
+
+  doc["ui_root_order"] = cfg.ui_root_order;
+  doc["ui_info_order"] = cfg.ui_info_order;
 
   doc["loxone_ip"] = cfg.loxone_ip;
   doc["loxone_udp_port"] = cfg.loxone_udp_port;

@@ -16,6 +16,11 @@ void webServerBegin(ESP8266WebServer &server,
 
   // Statische Dateien
   server.serveStatic("/style.css", LittleFS, "/style.css");
+  server.serveStatic("/script.js", LittleFS, "/script.js");
+  server.serveStatic("/favicon.svg", LittleFS, "/favicon.svg");
+  server.serveStatic("/logo_name_weiss.svg", LittleFS, "/logo_name_weiss.svg");
+  server.serveStatic("/logo_name_weiss_gruen.svg", LittleFS, "/logo_name_weiss_gruen.svg");
+  server.serveStatic("/logo_name_gruen.svg", LittleFS, "/logo_name_gruen.svg");
 
   // Auth-Routen (/login, /force_pw, /logout)
   authAttach(server, cfg);

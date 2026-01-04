@@ -17,9 +17,11 @@ static String uiHeader(const String& title, bool showLogout = false) {
     "<meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
     "<link rel='stylesheet' href='/style.css'>"
+    "<link rel='icon' type='image/svg+xml' href='/favicon.svg'>"
+    "<script defer src='/script.js'></script>"
     "<title>"+ title + "</title>"
     "</head><body>"
-    "<div class='topbar'>Multi-Sensor</div>"
+    "<div class='topbar'><img src='/logo_name_weiss.svg' alt='Multi Sensors' class='logo'></div>"
     "<div class='menubar'>"
       "<a class='active' href='/login'>Login</a>";
 
@@ -186,31 +188,31 @@ void handleLogin(ESP8266WebServer &server, AppConfig &cfg) {
     html += "<p style='color:#b00020; font-weight:700;'>" + err + "</p>";
   }
 
-  html += "<form method='POST'>";
+html += "<form method='POST' class='login-form'>";
 
-  html +=
-    "<div class='form-row'><label>Benutzer</label>"
-    "<input name='user' value='admin' required></div>"
+html +=
+  "<div class='form-row'><label>Benutzer</label>"
+  "<input name='user' value='admin' required></div>"
 
-    "<div class='form-row'><label>Passwort</label>"
-    "<input name='pass' type='password' required></div>";
+  "<div class='form-row'><label>Passwort</label>"
+  "<input name='pass' type='password' required></div>";
 
-  // ✅ Lizenz-Checkbox OPTIONAL
-    html +=
-      "<div class='form-row'>"
-      "<div class='checkline'>"
+// ✅ Lizenz-Checkbox
+html +=
+  "<div class='form-row login-license-row'>"
+    "<div class='checkline login-checkline'>"
       "<input type='checkbox' id='license_ok' name='license_ok' required>"
       "<label for='license_ok'>Ich akzeptiere die <a href='/license'>Lizenzbedingungen</a>.</label>"
-      "</div>"
-      "<div class='small'>Ohne Zustimmung ist kein Login möglich.</div>"
-    "</div>";
-  
+    "</div>"
+    "<div class='small login-license-hint'>Ohne Zustimmung ist kein Login möglich.</div>"
+  "</div>";
 
   html +=
-    "<div class='actions'>"
+  "<div class='actions'>"
     "<button class='btn-primary' type='submit'>Anmelden</button>"
-    "</div>"
-    "</form>";
+  "</div>"
+"</form>";
+
 
   html += uiFooter();
 

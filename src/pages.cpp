@@ -95,9 +95,11 @@ static String headerHtmlAuth(const String &title, const String &currentPath) {
     "<!doctype html><html><head><meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
     "<link rel='stylesheet' href='/style.css'>"
+    "<script defer src='/script.js'></script>"
+    "<link rel='icon' type='image/svg+xml' href='/favicon.svg'>"
     "<title>") + String(FW_NAME) + " - " + title + "</title>"
     "</head><body>"
-    "<div class='topbar'>" + String(FW_NAME) + "</div>"
+    "<div class='topbar'><img src='/logo_name_weiss.svg' alt='Multi Sensors' class='logo'></div>"
     "<div class='menubar'>"
       + navLink("/", "Startseite", currentPath)
       + navLink("/info", "Info", currentPath)
@@ -131,6 +133,8 @@ static String headerHtmlPublic(ESP8266WebServer &server, const String &title, co
     "<!doctype html><html><head><meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
     "<link rel='stylesheet' href='/style.css'>"
+    "<script defer src='/script.js'></script>"
+    "<link rel='icon' type='image/svg+xml' href='/favicon.svg'>"
     "<title>") + String(FW_NAME) + " - " + title + "</title>"
     "</head><body>"
     "<div class='topbar'>" + String(FW_NAME) + "</div>"
