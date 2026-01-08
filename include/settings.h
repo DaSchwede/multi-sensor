@@ -2,9 +2,9 @@
 #include <Arduino.h>
 
 struct AppConfig {
-  // Loxone
-  String loxone_ip = "192.168.1.10";
-  uint16_t loxone_udp_port = 7000;
+  // UDP
+  String server_udp_ip = "192.168.1.10";
+  uint16_t server_udp_port = 7000;
   uint32_t send_interval_ms = 5000;
   String sensor_id = "sensor01";
 

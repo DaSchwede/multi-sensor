@@ -35,7 +35,7 @@ void SendUDP(const AppConfig& cfg, const SensorData& d) {
     ? udpPayloadJson(cfg, d, ts)
     : udpPayloadCsv(cfg, d, ts);
 
-  udp.beginPacket(cfg.loxone_ip.c_str(), cfg.loxone_udp_port);
+  udp.beginPacket(cfg.server_udp_ip.c_str(), cfg.server_udp_port);
   udp.write((const uint8_t*)payload.c_str(), payload.length());
   udp.endPacket();
 }

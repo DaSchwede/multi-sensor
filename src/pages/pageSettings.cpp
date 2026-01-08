@@ -22,8 +22,8 @@ void pageSettings(ESP8266WebServer &server) {
     if (server.hasArg("ui_info_order")) cfg->ui_info_order = server.arg("ui_info_order");
 
     // Basis-Felder
-    if (server.hasArg("loxone_ip"))        cfg->loxone_ip = server.arg("loxone_ip");
-    if (server.hasArg("loxone_udp_port"))  cfg->loxone_udp_port = toIntSafe(server.arg("loxone_udp_port"), cfg->loxone_udp_port);
+    if (server.hasArg("server_udp_ip"))        cfg->server_udp_ip = server.arg("server_udp_ip");
+    if (server.hasArg("server_udp_port"))  cfg->server_udp_port = toIntSafe(server.arg("server_udp_port"), cfg->server_udp_port);
     if (server.hasArg("send_interval_ms")) cfg->send_interval_ms = (uint32_t)toIntSafe(server.arg("send_interval_ms"), (int)cfg->send_interval_ms);
     if (server.hasArg("sensor_id"))        cfg->sensor_id = server.arg("sensor_id");
 
@@ -47,12 +47,12 @@ void pageSettings(ESP8266WebServer &server) {
 
   html += "<form method='POST'>";
 
-  // Loxone/UDP
-  html += "<div class='card'><h2>Loxone / UDP</h2>";
-  html += "<div class='form-row'><label>Loxone IP</label>"
-          "<input name='loxone_ip' value='" + cfg->loxone_ip + "'></div>";
+  // UDP
+  html += "<div class='card'><h2>UDP</h2>";
+  html += "<div class='form-row'><label>Server IP</label>"
+          "<input name='server_udp_ip' value='" + cfg->server_udp_ip + "'></div>";
   html += "<div class='form-row'><label>UDP Port</label>"
-          "<input name='loxone_udp_port' type='number' value='" + String(cfg->loxone_udp_port) + "'></div>";
+          "<input name='server_udp_port' type='number' value='" + String(cfg->server_udp_port) + "'></div>";
   html += "<div class='form-row'><label>Sendeintervall (ms)</label>"
           "<input name='send_interval_ms' type='number' value='" + String(cfg->send_interval_ms) + "'></div>";
   html += "<div class='form-row'><label>Sensor ID</label>"

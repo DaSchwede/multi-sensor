@@ -230,8 +230,8 @@ String cardAktuelleEinstellungen() {
   } else {
     h += "<tr><th>Sensor-ID</th><td>" + gCfg->sensor_id + "</td></tr>";
     h += "<tr><th>Intervall</th><td>" + String(gCfg->send_interval_ms) + " ms</td></tr>";
-    h += "<tr><th>Loxone IP</th><td>" + gCfg->loxone_ip + "</td></tr>";
-    h += "<tr><th>UDP Port</th><td>" + String(gCfg->loxone_udp_port) + "</td></tr>";
+    h += "<tr><th>Server IP</th><td>" + gCfg->server_udp_ip + "</td></tr>";
+    h += "<tr><th>UDP Port</th><td>" + String(gCfg->server_udp_port) + "</td></tr>";
     h += "<tr><th>MQTT</th><td>" + String(gCfg->mqtt_enabled ? "An" : "Aus") + "</td></tr>";
   }
 

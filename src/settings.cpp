@@ -42,8 +42,8 @@ bool loadConfig(AppConfig &cfg) {
   cfg.ui_root_order = doc["ui_root_order"] | cfg.ui_root_order;
   cfg.ui_info_order = doc["ui_info_order"] | cfg.ui_info_order;
 
-  cfg.loxone_ip = doc["loxone_ip"] | cfg.loxone_ip;
-  cfg.loxone_udp_port = doc["loxone_udp_port"] | cfg.loxone_udp_port;
+  cfg.server_udp_ip = doc["server_udp_ip"] | cfg.server_udp_ip;
+  cfg.server_udp_port = doc["server_udp_port"] | cfg.server_udp_port;
   cfg.send_interval_ms = doc["send_interval_ms"] | cfg.send_interval_ms;
   cfg.sensor_id = doc["sensor_id"] | cfg.sensor_id;
 
@@ -78,8 +78,8 @@ bool saveConfig(const AppConfig &cfg) {
   doc["ui_root_order"] = cfg.ui_root_order;
   doc["ui_info_order"] = cfg.ui_info_order;
 
-  doc["loxone_ip"] = cfg.loxone_ip;
-  doc["loxone_udp_port"] = cfg.loxone_udp_port;
+  doc["server_udp_ip"] = cfg.server_udp_ip;
+  doc["server_udp_port"] = cfg.server_udp_port;
   doc["send_interval_ms"] = cfg.send_interval_ms;
   doc["sensor_id"] = cfg.sensor_id;
 
