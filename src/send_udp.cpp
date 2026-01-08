@@ -1,4 +1,4 @@
-#include "loxone_udp.h"
+#include "send_udp.h"
 #include <WiFiUdp.h>
 #include "ntp_time.h"   // ✅ für ntpEpochUtc()
 #include "settings.h"
@@ -27,7 +27,7 @@ static String udpPayloadJson(const AppConfig& cfg, const SensorData& d, unsigned
   return s;
 }
 
-void loxoneSendUDP(const AppConfig& cfg, const SensorData& d) {
+void SendUDP(const AppConfig& cfg, const SensorData& d) {
   unsigned long ts = ntpEpochUtc();
   if (ts == 0) ts = millis() / 1000;  // Fallback
 

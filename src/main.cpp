@@ -5,7 +5,7 @@
 #include "settings.h"
 #include "wifi_mgr.h"
 #include "bme280_sensor.h"
-#include "loxone_udp.h"
+#include "send_udp.h"
 #include "web_server.h"
 #include "ntp_time.h"
 
@@ -65,7 +65,7 @@ void loop() {
   // UDP senden
   if (millis() - lastSend >= cfg.send_interval_ms) {
     lastSend = millis();
-    loxoneSendUDP(cfg, liveData);
+    SendUDP(cfg, liveData);
     lastSendMs = millis();
   }
 

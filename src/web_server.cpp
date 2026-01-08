@@ -48,10 +48,20 @@ void webServerBegin(ESP8266WebServer &server,
     [&](){ pageRestoreUpload(server); }
   );
 
+  server.on("/ota", HTTP_GET,  [&](){ pageOtaForm(server); });
+  server.on("/ota_prepare", HTTP_POST, [&](){ pageOtaPrepare(server); });
+
+  server.on("/ota_upload", HTTP_GET,  [&](){ pageOtaUploadForm(server); });
+
+  server.on("/ota_upload", HTTP_POST,
+    [&](){ /* Antwort kommt im Upload END */ },
+    [&](){ pageOtaUpload(server); }
+  );
+
   server.on("/factory_reset", HTTP_GET,  [&](){ pageFactoryResetForm(server); });
   server.on("/factory_reset", HTTP_POST, [&](){ pageFactoryResetDo(server); });
 
-  // Cookie-Header lesen können
+    // Cookie-Header lesen können
   server.collectHeaders("Cookie");
   server.begin();
 }

@@ -307,3 +307,7 @@ button, .btn{
   width:auto;
   display:block;
 }
+
+/* ===== OTA ===== */
+.badge-inline{ display:inline-block; }
+.mt-12{ margin-top:12px; }

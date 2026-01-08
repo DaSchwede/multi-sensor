@@ -21,6 +21,10 @@ void pageRestoreUpload(ESP8266WebServer &server);
 void pageFactoryResetForm(ESP8266WebServer &server);
 void pageFactoryResetDo(ESP8266WebServer &server);
 
+// OTA
+void pageOtaForm(ESP8266WebServer &server);
+void pageOtaUpload(ESP8266WebServer &server);
+
 // API
 void apiLive(ESP8266WebServer &server);
 

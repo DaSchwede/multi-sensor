@@ -116,6 +116,7 @@ void pageSettings(ESP8266WebServer &server) {
           "<button class='btn-primary' type='submit'>Speichern</button>"
           "<a class='btn btn-secondary' href='/backup'>Backup</a>"
           "<a class='btn btn-secondary' href='/restore'>Restore</a>"
+          "<a class='btn btn-secondary' href='/ota'>OTA Update</a>"
           "<a class='btn btn-secondary' href='/factory_reset'>Factory Reset</a>"
           "</div>";
   html += "</div>";

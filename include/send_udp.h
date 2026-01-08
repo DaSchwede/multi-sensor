@@ -4,4 +4,4 @@
 #include "settings.h"
 #include "bme280_sensor.h"
 
-void loxoneSendUDP(const AppConfig &cfg, const SensorData &d);
+void SendUDP(const AppConfig &cfg, const SensorData &d);
