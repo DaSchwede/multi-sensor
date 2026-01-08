@@ -22,8 +22,10 @@ void pageFactoryResetForm(ESP8266WebServer &server);
 void pageFactoryResetDo(ESP8266WebServer &server);
 
 // OTA
-void pageOtaForm(ESP8266WebServer &server);
-void pageOtaUpload(ESP8266WebServer &server);
+void pageOtaForm(ESP8266WebServer &server);        // Sicherheitsabfrage + Admin-Passwort
+void pageOtaPrepare(ESP8266WebServer &server);     // prüft & "armed" Token
+void pageOtaUploadForm(ESP8266WebServer &server);  // Upload-Form mit Progressbar
+void pageOtaUpload(ESP8266WebServer &server);      // Upload-Handler
 
 // API
 void apiLive(ESP8266WebServer &server);

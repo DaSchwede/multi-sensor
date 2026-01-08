@@ -311,3 +311,37 @@ button, .btn{
 /* ===== OTA ===== */
 .badge-inline{ display:inline-block; }
 .mt-12{ margin-top:12px; }
+
+/* ===== OTA Progress ===== */
+.progress{
+  width:100%;
+  height:12px;
+  background: #e5e7eb;
+  border-radius:999px;
+  overflow:hidden;
+  border:1px solid var(--border);
+}
+
+.progress > .bar{
+  height:100%;
+  width:0%;
+  background: var(--brand);
+  transition: width .15s linear;
+}
+
+.progress-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-top:10px;
+}
+
+.progress-pct{
+  min-width:52px;
+  text-align:right;
+  font-weight:800;
+}
+
+.status-line{
+  margin-top:10px;
+}

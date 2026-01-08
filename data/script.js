@@ -132,3 +132,63 @@
 
   window.addEventListener("load", setupDarstellungUI);
 })();
+
+// ===== OTA Upload Progress (WebOTA) =====
+(function(){
+  function setupOtaUpload(){
+    const form = document.getElementById("otaForm");
+    if(!form) return;
+
+    const bar = document.getElementById("otaBar");
+    const pct = document.getElementById("otaPct");
+    const st  = document.getElementById("otaStatus");
+
+    function setStatus(t){ if(st) st.textContent = t; }
+    function setPct(p){
+      const v = Math.max(0, Math.min(100, p|0));
+      if(bar) bar.style.width = v + "%";
+      if(pct) pct.textContent = v + "%";
+    }
+
+    form.addEventListener("submit", function(e){
+      e.preventDefault();
+
+      const fileInput = form.querySelector("input[type='file'][name='fw']");
+      if(!fileInput || !fileInput.files || !fileInput.files.length){
+        setStatus("Bitte eine firmware.bin auswählen.");
+        return;
+      }
+
+      const action = form.getAttribute("action") || "/ota_upload";
+      const fd = new FormData(form);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", action, true);
+
+      xhr.upload.onprogress = function(ev){
+        if(ev.lengthComputable){
+          const p = Math.round((ev.loaded / ev.total) * 100);
+          setPct(p);
+          setStatus("Upload läuft…");
+        }
+      };
+
+      xhr.onload = function(){
+        // Server antwortet HTML (Erfolg/Fehler), wir ersetzen die Seite
+        document.open();
+        document.write(xhr.responseText);
+        document.close();
+      };
+
+      xhr.onerror = function(){
+        setStatus("Upload fehlgeschlagen (Netzwerkfehler).");
+      };
+
+      setPct(0);
+      setStatus("Starte Upload…");
+      xhr.send(fd);
+    });
+  }
+
+  window.addEventListener("load", setupOtaUpload);
+})();
