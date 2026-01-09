@@ -2,6 +2,11 @@
 #include <LittleFS.h>
 #include "auth.h"
 #include "pages.h"
+#include "settings_config/pageSettingsUdp.h"
+#include "settings_config/pageSettingsTime.h"
+#include "settings_config/pageSettingsMqtt.h"
+#include "settings_config/pageSettingsUi.h"
+#include "settings_config/settings_common.h"
 
 void webServerBegin(ESP8266WebServer &server,
                     AppConfig &cfg,
@@ -25,6 +30,9 @@ void webServerBegin(ESP8266WebServer &server,
   // Auth-Routen (/login, /force_pw, /logout)
   authAttach(server, cfg);
 
+    // Cookie-Header lesen können
+  server.collectHeaders("Cookie");
+
   server.on("/license", HTTP_GET, [&](){ pageLicense(server); });
 
   // API
@@ -34,9 +42,24 @@ void webServerBegin(ESP8266WebServer &server,
   server.on("/", HTTP_GET,        [&](){ pageRoot(server); });
   server.on("/info", HTTP_GET,    [&](){ pageInfo(server); });
 
-  // ✅ settings GET + POST müssen beide pageSettings sein
-  server.on("/settings", HTTP_GET,  [&](){ pageSettings(server); });
-  server.on("/settings", HTTP_POST, [&](){ pageSettings(server); });
+  server.on("/settings", HTTP_GET, [&](){
+  server.sendHeader("Location", "/settings/udp", true);
+  server.send(302, "text/plain", "");
+  });
+
+  server.on("/settings/udp",   HTTP_GET, [&](){ pageSettingsUdp(server); });
+  server.on("/settings/udp",   HTTP_POST, [&](){ pageSettingsUdp(server); });
+
+  server.on("/settings/time",  HTTP_GET, [&](){ pageSettingsTime(server); });
+  server.on("/settings/time",  HTTP_POST, [&](){ pageSettingsTime(server); });
+  
+  server.on("/settings/mqtt",  HTTP_GET, [&](){ pageSettingsMqtt(server); });
+  server.on("/settings/mqtt",  HTTP_POST, [&](){ pageSettingsMqtt(server); });
+
+  server.on("/settings/ui",    HTTP_GET, [&](){ pageSettingsUi(server); });
+  server.on("/settings/ui",    HTTP_POST, [&](){ pageSettingsUi(server); });
+
+  server.on("/settings/tools", HTTP_GET, [&](){ pageSettingsTools(server); });
 
   server.on("/about", HTTP_GET,   [&](){ pageAbout(server); });
   server.on("/backup", HTTP_GET,  [&](){ pageBackup(server); });
@@ -61,8 +84,7 @@ void webServerBegin(ESP8266WebServer &server,
   server.on("/factory_reset", HTTP_GET,  [&](){ pageFactoryResetForm(server); });
   server.on("/factory_reset", HTTP_POST, [&](){ pageFactoryResetDo(server); });
 
-    // Cookie-Header lesen können
-  server.collectHeaders("Cookie");
+
   server.begin();
 }
 

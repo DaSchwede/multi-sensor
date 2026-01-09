@@ -23,6 +23,13 @@ void pageRestoreUpload(ESP8266WebServer &server);
 void pageFactoryResetForm(ESP8266WebServer &server);
 void pageFactoryResetDo(ESP8266WebServer &server);
 
+// settings pages
+void pageSettingsUdp(ESP8266WebServer &server);
+void pageSettingsTime(ESP8266WebServer &server);
+void pageSettingsMqtt(ESP8266WebServer &server);
+void pageSettingsUi(ESP8266WebServer &server);
+void pageSettingsTools(ESP8266WebServer &server);
+
 // OTA
 void pageOtaForm(ESP8266WebServer &server);        // Sicherheitsabfrage + Admin-Passwort
 void pageOtaPrepare(ESP8266WebServer &server);     // prüft & "armed" Token

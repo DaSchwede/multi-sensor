@@ -39,6 +39,34 @@ static String navLink(const String& href, const String& label, const String& cur
   return "<a class='" + cls + "' href='" + href + "'>" + label + "</a>";
 }
 
+static bool pathStartsWith(const String& path, const String& prefix) {
+  return path.length() >= prefix.length() && path.startsWith(prefix);
+}
+
+static String navDrop(const String& label,
+                      const String& basePath,
+                      const String& currentPath,
+                      const std::vector<std::pair<String,String>>& items) {
+  // aktiv, wenn wir "in" diesem Bereich sind
+  String activeCls = pathStartsWith(currentPath, basePath) ? "active" : "";
+
+  String h;
+  h += "<div class='navdrop " + activeCls + "'>";
+  h +=   "<a class='navdrop-btn' href='" + basePath + "'>" + label + " <span class='caret'>▾</span></a>";
+  h +=   "<div class='navdrop-menu'>";
+
+  for (const auto& it : items) {
+    const String& href  = it.first;
+    const String& title = it.second;
+    String cls = (href == currentPath) ? "active" : "";
+    h += "<a class='" + cls + "' href='" + href + "'>" + title + "</a>";
+  }
+
+  h +=   "</div>";
+  h += "</div>";
+  return h;
+}
+
 static String uptimeString() {
   uint32_t s = millis() / 1000;
   uint32_t d = s / 86400; s %= 86400;
@@ -92,6 +120,14 @@ std::vector<String> pagesSplitCsv(const String &csv) { return splitCsv(csv); }
 // Header/Footer (Auth/Public)
 // ============================================================================
 static String headerHtmlAuth(const String &title, const String &currentPath) {
+  // Dropdown-Items (Einstellungen)
+std::vector<std::pair<String,String>> settingsItems = {
+  { "/settings/udp",   "UDP" },
+  { "/settings/time",  "Zeit / NTP" },
+  { "/settings/mqtt",  "MQTT" },
+  { "/settings/ui",    "Darstellung" },
+  { "/settings/tools", "Tools" },
+};
   return String(
     "<!doctype html><html><head><meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
@@ -104,7 +140,7 @@ static String headerHtmlAuth(const String &title, const String &currentPath) {
     "<div class='menubar'>"
       + navLink("/", "Startseite", currentPath)
       + navLink("/info", "Info", currentPath)
-      + navLink("/settings", "Einstellungen", currentPath)
+      + navDrop("Einstellungen", "/settings/udp", currentPath, settingsItems)
       + navLink("/about", "Über", currentPath)
       + "<span class='right'><a href='/logout'>Abmelden</a></span>"
     "</div>"
@@ -114,12 +150,20 @@ static String headerHtmlAuth(const String &title, const String &currentPath) {
 static String headerHtmlPublic(ESP8266WebServer &server, const String &title, const String &currentPath) {
   bool authed = isAuthenticated(server);
 
+  std::vector<std::pair<String,String>> settingsItems = {
+  { "/settings/udp",   "UDP" },
+  { "/settings/time",  "Zeit / NTP" },
+  { "/settings/mqtt",  "MQTT" },
+  { "/settings/ui",    "Darstellung" },
+  { "/settings/tools", "Tools" },
+};
+
   String menu;
   if (authed) {
     menu =
       navLink("/", "Startseite", currentPath) +
       navLink("/info", "Info", currentPath) +
-      navLink("/settings", "Einstellungen", currentPath) +
+      navDrop("Einstellungen", "/settings/udp", currentPath, settingsItems) +
       navLink("/about", "Über", currentPath) +
       navLink("/license", "Lizenz", currentPath) +
       "<span class='right'><a href='/logout'>Abmelden</a></span>";

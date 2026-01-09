@@ -345,3 +345,60 @@ button, .btn{
 .status-line{
   margin-top:10px;
 }
+
+/* Dropdown in der Menubar */
+.navdrop{
+  position: relative;
+  display: inline-block;
+}
+
+.navdrop-btn{
+  display: inline-block;
+}
+
+.navdrop .caret{
+  font-size: 0.9em;
+  opacity: 0.9;
+}
+
+.navdrop-menu{
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 200px;
+  z-index: 50;
+  padding: 6px;
+
+  background: #2f2f2f; /* passend zu menubar */
+  border: 1px solid rgba(255,255,255,0.08);
+  border-top: none;
+  border-radius: 14px;
+}
+
+.navdrop-menu a{
+  display: block;
+  padding: 12px 14px;
+  border-radius: 12px;
+  margin: 2px 0;
+}
+
+.navdrop-menu a:hover{
+  background: rgba(255,255,255,0.08);
+}
+
+.navdrop:hover .navdrop-menu{
+  display: block;
+}
+
+/* Aktiver Punkt */
+.navdrop-menu a.active{
+  background: rgba(255,255,255,0.18);
+  font-weight: 600;
+}
+
+/* Aktivzustand für Dropdown (wenn currentPath unter /settings/... ist) */
+.navdrop.active > .navdrop-btn{
+  /* gleiche Optik wie dein .menubar a.active */
+  /* falls du schon .active definierst, kann das leer bleiben */
+}
