@@ -2,30 +2,44 @@
 #include <WiFiUdp.h>
 #include "ntp_time.h"   // ✅ für ntpEpochUtc()
 #include "settings.h"
+#include <math.h>
+
 
 static WiFiUDP udp;
 
 static String udpPayloadCsv(const AppConfig& cfg, const SensorData& d, unsigned long ts){
   String s;
-  s.reserve(128);
+  s.reserve(160);
   s += "id=" + cfg.sensor_id;
   s += ";ts=" + String(ts);
-  s += ";t=" + String(d.temperature_c, 2);
-  s += ";h=" + String(d.humidity_rh, 2);
-  s += ";p=" + String(d.pressure_hpa, 2);
+
+  if (!isnan(d.temperature_c)) s += ";t=" + String(d.temperature_c, 2);
+  if (!isnan(d.humidity_rh))   s += ";h=" + String(d.humidity_rh, 2);
+  if (!isnan(d.pressure_hpa))  s += ";p=" + String(d.pressure_hpa, 2);
+
+  // CO2 (ppm, ohne Nachkommastellen)
+  if (!isnan(d.co2_ppm))       s += ";co2=" + String((int)lroundf(d.co2_ppm));
+
   return s;
 }
 
+
+static String jsNum2(float v){ return isnan(v) ? "null" : String(v, 2); }
+static String jsInt0(float v){ return isnan(v) ? "null" : String((int)lroundf(v)); }
+
 static String udpPayloadJson(const AppConfig& cfg, const SensorData& d, unsigned long ts){
   String s;
-  s.reserve(160);
+  s.reserve(200);
   s += "{\"id\":\"" + cfg.sensor_id + "\",";
   s += "\"ts\":" + String(ts) + ",";
-  s += "\"t\":" + String(d.temperature_c, 2) + ",";
-  s += "\"h\":" + String(d.humidity_rh, 2) + ",";
-  s += "\"p\":" + String(d.pressure_hpa, 2) + "}";
+  s += "\"t\":" + jsNum2(d.temperature_c) + ",";
+  s += "\"h\":" + jsNum2(d.humidity_rh) + ",";
+  s += "\"p\":" + jsNum2(d.pressure_hpa) + ",";
+  s += "\"co2_ppm\":" + jsInt0(d.co2_ppm);
+  s += "}";
   return s;
 }
+
 
 void SendUDP(const AppConfig& cfg, const SensorData& d) {
   unsigned long ts = ntpEpochUtc();

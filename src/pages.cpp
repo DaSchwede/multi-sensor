@@ -9,6 +9,7 @@
 #include "version.h"
 #include "ntp_time.h"
 
+
 // ============================================================================
 // Globals (gesetzt über pagesInit)
 // ============================================================================
@@ -187,9 +188,19 @@ String cardSensor() {
   if (!gLive) {
     h += "<tr><th>Status</th><td>Keine Daten</td></tr>";
   } else {
-    h += "<tr><th>Temperatur</th><td>" + String(gLive->temperature_c, 1) + " °C</td></tr>";
-    h += "<tr><th>Feuchte</th><td>" + String(gLive->humidity_rh, 1) + " %</td></tr>";
-    h += "<tr><th>Druck</th><td>" + String(gLive->pressure_hpa, 1) + " hPa</td></tr>";
+    auto fmt1 = [](float v, const char* unit)->String {
+      if (isnan(v)) return String("—");
+      return String(v, 1) + unit;
+    };
+    auto fmt0 = [](float v, const char* unit)->String {
+      if (isnan(v)) return String("—");
+      return String((int)lroundf(v)) + unit;
+    };
+
+    h += "<tr><th>Temperatur</th><td>" + fmt1(gLive->temperature_c, " °C") + "</td></tr>";
+    h += "<tr><th>Feuchte</th><td>"    + fmt1(gLive->humidity_rh,   " %")  + "</td></tr>";
+    h += "<tr><th>Druck</th><td>"      + fmt1(gLive->pressure_hpa,  " hPa") + "</td></tr>";
+    h += "<tr><th>CO₂</th><td>"        + fmt0(gLive->co2_ppm,       " ppm") + "</td></tr>";
   }
 
   h += "</table></div>";

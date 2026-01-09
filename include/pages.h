@@ -3,6 +3,8 @@
 #include <ESP8266WebServer.h>
 #include "settings.h"
 #include "bme280_sensor.h"
+#include "sensor_data.h"
+
 
 // Init: setzt interne Pointer (cfg/live/zeiten)
 void pagesInit(AppConfig &cfg, SensorData *liveData, uint32_t *lastReadMs, uint32_t *lastSendMs);
