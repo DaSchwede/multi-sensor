@@ -10,7 +10,6 @@
 #include "ntp_time.h"
 #include "scd40_sensor.h"
 #include <math.h>
-#include "scd40_sensor.h"
 
 
 static ESP8266WebServer server(80);
@@ -32,9 +31,14 @@ void setup() {
   }
   loadConfig(cfg);
 
-  wifiEnsureConnected();
+    // MQTT Client-ID automatisch setzen, falls leer
+  if (cfg.mqtt_client_id.length() == 0) {
+    cfg.mqtt_client_id = "multi-sensor-" + String(ESP.getChipId(), HEX);
+    saveConfig(cfg);
+  }
 
   WiFi.hostname("multi-sensor");
+  wifiEnsureConnected();
 
 if (MDNS.begin("multi-sensor")) {
   MDNS.addService("http", "tcp", 80);

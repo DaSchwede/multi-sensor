@@ -48,9 +48,10 @@ bool loadConfig(AppConfig &cfg) {
   cfg.sensor_id = doc["sensor_id"] | cfg.sensor_id;
 
   cfg.ntp_server = doc["ntp_server"] | cfg.ntp_server;
-  cfg.tz_auto_berlin = doc["tz_auto_berlin"] | true;
-  cfg.tz_base_seconds = doc["tz_base_seconds"] | 3600;
-  cfg.dst_add_seconds = doc["dst_add_seconds"] | 3600;
+  cfg.tz_auto_berlin  = doc["tz_auto_berlin"]  | cfg.tz_auto_berlin;
+  cfg.tz_base_seconds = doc["tz_base_seconds"] | cfg.tz_base_seconds;
+  cfg.dst_add_seconds = doc["dst_add_seconds"] | cfg.dst_add_seconds;
+
 
   cfg.udp_format = doc["udp_format"] | cfg.udp_format;
 
@@ -62,11 +63,27 @@ bool loadConfig(AppConfig &cfg) {
   cfg.force_pw_change = doc["force_pw_change"] | true;
 
   cfg.mqtt_enabled = doc["mqtt_enabled"] | cfg.mqtt_enabled;
+    // MQTT (vollständig)
+  cfg.mqtt_host          = doc["mqtt_host"]          | cfg.mqtt_host;
+  cfg.mqtt_port          = doc["mqtt_port"]          | cfg.mqtt_port;
+  cfg.mqtt_user          = doc["mqtt_user"]          | cfg.mqtt_user;
+  cfg.mqtt_pass          = doc["mqtt_pass"]          | cfg.mqtt_pass;
+  cfg.mqtt_client_id     = doc["mqtt_client_id"]     | cfg.mqtt_client_id;
+  cfg.mqtt_topic_base    = doc["mqtt_topic_base"]    | cfg.mqtt_topic_base;
+  cfg.mqtt_retain        = doc["mqtt_retain"]        | cfg.mqtt_retain;
+  cfg.mqtt_qos           = doc["mqtt_qos"]           | cfg.mqtt_qos;
+  cfg.mqtt_keepalive     = doc["mqtt_keepalive"]     | cfg.mqtt_keepalive;
+  cfg.mqtt_clean_session = doc["mqtt_clean_session"] | cfg.mqtt_clean_session;
 
-  cfg.ui_info_order = doc["ui_info_order"] | cfg.ui_info_order;
+
   cfg.ui_info_hide  = doc["ui_info_hide"]  | cfg.ui_info_hide;
   cfg.ui_home_order = doc["ui_home_order"] | cfg.ui_home_order;
   cfg.ui_home_hide  = doc["ui_home_hide"]  | cfg.ui_home_hide;
+
+    // Sanity
+  if (cfg.mqtt_port == 0) cfg.mqtt_port = 1883;
+  if (cfg.mqtt_qos > 2) cfg.mqtt_qos = 0;
+  if (cfg.mqtt_keepalive < 5) cfg.mqtt_keepalive = 30;
 
   return true;
 }
@@ -97,8 +114,19 @@ bool saveConfig(const AppConfig &cfg) {
   doc["force_pw_change"] = cfg.force_pw_change;
 
   doc["mqtt_enabled"] = cfg.mqtt_enabled;
+    // MQTT (vollständig)
+  doc["mqtt_host"]          = cfg.mqtt_host;
+  doc["mqtt_port"]          = cfg.mqtt_port;
+  doc["mqtt_user"]          = cfg.mqtt_user;
+  doc["mqtt_pass"]          = cfg.mqtt_pass;
+  doc["mqtt_client_id"]     = cfg.mqtt_client_id;
+  doc["mqtt_topic_base"]    = cfg.mqtt_topic_base;
+  doc["mqtt_retain"]        = cfg.mqtt_retain;
+  doc["mqtt_qos"]           = cfg.mqtt_qos;
+  doc["mqtt_keepalive"]     = cfg.mqtt_keepalive;
+  doc["mqtt_clean_session"] = cfg.mqtt_clean_session;
 
-  doc["ui_info_order"] = cfg.ui_info_order;
+
   doc["ui_info_hide"]  = cfg.ui_info_hide;
   doc["ui_home_order"] = cfg.ui_home_order;
   doc["ui_home_hide"]  = cfg.ui_home_hide;
