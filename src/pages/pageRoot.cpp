@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <ESP8266WebServer.h>
+#include <WebServer.h>
 #include "pages.h"
 #include "auth.h"
 
@@ -75,7 +75,7 @@ setInterval(refreshLive, 5000);
 )JS";
 }
 
-void pageRoot(ESP8266WebServer &server) {
+void pageRoot(WebServer &server) {
   AppConfig* cfg = pagesCfg();
   if (!cfg) { server.send(500, "text/plain", "cfg missing"); return; }
   if (!requireAuth(server, *cfg)) return;

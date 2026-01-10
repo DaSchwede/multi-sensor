@@ -1,9 +1,9 @@
 #include <Arduino.h>
-#include <ESP8266WebServer.h>
+#include <WebServer.h>
 #include "pages.h"
 #include "settings_config/settings_common.h"
 
-void pageSettingsUi(ESP8266WebServer &server) {
+void pageSettingsUi(WebServer &server) {
   AppConfig* cfg = settingsRequireCfgAndAuth(server);
   if (!cfg) return;
 

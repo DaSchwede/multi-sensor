@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <ESP8266WebServer.h>
+#include <WebServer.h>
 #include <LittleFS.h>
 #include "pages.h"
 #include "auth.h"
@@ -7,7 +7,7 @@
 
 static File gUploadFile;
 
-void pageBackup(ESP8266WebServer &server) {
+void pageBackup(WebServer &server) {
   AppConfig* cfg = pagesCfg();
   if (!cfg) { server.send(500, "text/plain", "cfg missing"); return; }
   if (!requireAuth(server, *cfg)) return;
@@ -23,7 +23,7 @@ void pageBackup(ESP8266WebServer &server) {
   f.close();
 }
 
-void pageRestoreForm(ESP8266WebServer &server) {
+void pageRestoreForm(WebServer &server) {
   AppConfig* cfg = pagesCfg();
   if (!cfg) { server.send(500, "text/plain", "cfg missing"); return; }
   if (!requireAuth(server, *cfg)) return;
@@ -44,7 +44,7 @@ void pageRestoreForm(ESP8266WebServer &server) {
   server.send(200, "text/html; charset=utf-8", html);
 }
 
-void pageRestoreUpload(ESP8266WebServer &server) {
+void pageRestoreUpload(WebServer &server) {
   AppConfig* cfg = pagesCfg();
   if (!cfg) { server.send(500, "text/plain", "cfg missing"); return; }
   if (!requireAuth(server, *cfg)) return;
@@ -67,7 +67,7 @@ void pageRestoreUpload(ESP8266WebServer &server) {
   }
 }
 
-void pageFactoryResetForm(ESP8266WebServer &server) {
+void pageFactoryResetForm(WebServer &server) {
   AppConfig* cfg = pagesCfg();
   if (!cfg) { server.send(500, "text/plain", "cfg missing"); return; }
   if (!requireAuth(server, *cfg)) return;
@@ -86,7 +86,7 @@ void pageFactoryResetForm(ESP8266WebServer &server) {
   server.send(200, "text/html; charset=utf-8", html);
 }
 
-void pageFactoryResetDo(ESP8266WebServer &server) {
+void pageFactoryResetDo(WebServer &server) {
   AppConfig* cfg = pagesCfg();
   if (!cfg) { server.send(500, "text/plain", "cfg missing"); return; }
   if (!requireAuth(server, *cfg)) return;

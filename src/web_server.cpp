@@ -8,7 +8,7 @@
 #include "settings_config/pageSettingsUi.h"
 #include "settings_config/settings_common.h"
 
-void webServerBegin(ESP8266WebServer &server,
+void webServerBegin(WebServer &server,
                     AppConfig &cfg,
                     SensorData *liveData,
                     uint32_t *lastReadMs,
@@ -31,7 +31,8 @@ void webServerBegin(ESP8266WebServer &server,
   authAttach(server, cfg);
 
     // Cookie-Header lesen können
-  server.collectHeaders("Cookie");
+  static const char* headerKeys[] = { "Cookie" };
+  server.collectHeaders(headerKeys, sizeof(headerKeys) / sizeof(headerKeys[0]));
 
   server.on("/license", HTTP_GET, [&](){ pageLicense(server); });
 
@@ -88,6 +89,6 @@ void webServerBegin(ESP8266WebServer &server,
   server.begin();
 }
 
-void webServerLoop(ESP8266WebServer &server) {
+void webServerLoop(WebServer &server) {
   server.handleClient();
 }

@@ -1,8 +1,8 @@
 #include <Arduino.h>
-#include <ESP8266WebServer.h>
+#include <WebServer.h>
 #include "pages.h"
 
-void pageLicense(ESP8266WebServer &server) {
+void pageLicense(WebServer &server) {
   String html = pagesHeaderPublic(server, "Lizenz", "/license");
 
   html += "<div class='card'><h2>Lizenz</h2>";

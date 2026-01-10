@@ -1,16 +1,11 @@
 #include "settings.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
-#include <Hash.h> // ESP8266: sha1()
 #include "ntp_time.h"
+#include "crypto_utils.h"
 
 static const char* CFG_FILE = "/config.json";
 
-// Einfacher Hash (SHA1) – für ESP8266 ok als Start.
-// Optional: später auf SHA256 (BearSSL) umstellen.
-static String sha1Hex(const String &in) {
-  return sha1(in);
-}
 
 String defaultAdminHash() {
   // Default-Passwort: "admin" (bitte nach Login ändern!)

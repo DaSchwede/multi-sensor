@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <ESP8266WebServer.h>
+#include <WebServer.h>
 #include "pages.h"
 #include "settings_config/settings_common.h"
 
@@ -28,7 +28,7 @@ static int clampInt(int v, int lo, int hi) {
   return v;
 }
 
-void pageSettingsMqtt(ESP8266WebServer &server) {
+void pageSettingsMqtt(WebServer &server) {
   AppConfig* cfg = settingsRequireCfgAndAuth(server);
   if (!cfg) return;
 

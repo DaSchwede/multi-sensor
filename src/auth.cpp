@@ -1,14 +1,16 @@
 #include "auth.h"
-#include <Hash.h>
+#include "crypto_utils.h"
+#include <esp_system.h>
 
 static const char* COOKIE_NAME = "LOXSESS";
 static String sessionToken; // sehr simpel (RAM). Nach Reboot neu login.
 
-String sha1Hex(const String &in) { return sha1(in); }
 
 static String randomToken() {
-  // kein Kryptotoken, aber ausreichend als Session-Token im LAN
-  return String(ESP.getChipId(), HEX)  + String(millis(), HEX);
+  uint64_t mac = ESP.getEfuseMac();
+  uint32_t low = (uint32_t)(mac & 0xFFFFFFFF);
+  uint32_t r = (uint32_t)esp_random();
+  return String(low, HEX) + "-" + String(millis(), HEX) + "-" + String(r, HEX);
 }
 
 static String uiHeader(const String& title, bool showLogout = false) {
@@ -41,7 +43,7 @@ static String uiFooter() {
   return "</div></div></body></html>";
 }
 
-void authAttach(ESP8266WebServer &server, AppConfig &cfg) {
+void authAttach(WebServer &server, AppConfig &cfg) {
 
   server.on("/force_pw", HTTP_GET, [&]() { handleForcePassword(server, cfg); });
   server.on("/force_pw", HTTP_POST, [&]() { handleForcePassword(server, cfg); });
@@ -51,7 +53,7 @@ void authAttach(ESP8266WebServer &server, AppConfig &cfg) {
   server.on("/logout", HTTP_GET, [&]() { handleLogout(server); });
 }
 
-bool isAuthenticated(ESP8266WebServer &server) {
+bool isAuthenticated(WebServer &server) {
   if (!server.hasHeader("Cookie")) return false;
   String cookie = server.header("Cookie");
   int idx = cookie.indexOf(String(COOKIE_NAME) + "=");
@@ -63,7 +65,7 @@ bool isAuthenticated(ESP8266WebServer &server) {
   return (value.length() > 0 && value == sessionToken);
 }
 
-bool requireAuth(ESP8266WebServer &server, AppConfig &cfg) {
+bool requireAuth(WebServer &server, AppConfig &cfg) {
 
   // 1) Zwang: Passwort muss gesetzt sein
   if (cfg.force_pw_change || passwordIsDefault(cfg)) {
@@ -90,7 +92,7 @@ bool passwordIsDefault(AppConfig &cfg) {
   return cfg.admin_pass_hash == defaultAdminHash();
 }
 
-void handleForcePassword(ESP8266WebServer &server, AppConfig &cfg) {
+void handleForcePassword(WebServer &server, AppConfig &cfg) {
 
   if (!cfg.force_pw_change && !passwordIsDefault(cfg)) {
     server.sendHeader("Location", "/", true);
@@ -146,7 +148,7 @@ void handleForcePassword(ESP8266WebServer &server, AppConfig &cfg) {
 }
 
 
-void handleLogin(ESP8266WebServer &server, AppConfig &cfg) {
+void handleLogin(WebServer &server, AppConfig &cfg) {
   String err = "";
 
   bool doLogin = false;
@@ -211,7 +213,7 @@ html +=
   "<div class='actions'>"
     "<button class='btn-primary' type='submit'>Anmelden</button>"
   "</div>"
-"</form>";
+  "</form>";
 
 
   html += uiFooter();
@@ -219,7 +221,7 @@ html +=
   server.send(200, "text/html; charset=utf-8", html);
 }
 
-void handleLogout(ESP8266WebServer &server) {
+void handleLogout(WebServer &server) {
   sessionToken = "";
   server.sendHeader("Set-Cookie", String(COOKIE_NAME) + "=; Path=/; Max-Age=0");
   server.sendHeader("Location", "/login", true);

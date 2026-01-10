@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <ESP8266WebServer.h>
+#include <WebServer.h>
 #include "pages.h"
 #include "auth.h"
 #include "settings.h"
@@ -9,7 +9,7 @@ static int toIntSafe(const String& s, int defVal){
   return s.toInt();
 }
 
-void pageSettings(ESP8266WebServer &server) {
+void pageSettings(WebServer &server) {
   AppConfig* cfg = pagesCfg();
   if (!cfg) { server.send(500, "text/plain", "cfg missing"); return; }
   if (!requireAuth(server, *cfg)) return;

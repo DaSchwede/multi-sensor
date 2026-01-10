@@ -2,12 +2,13 @@
 
 #include <Arduino.h>
 #include <LittleFS.h>
-#include <ESP8266WiFi.h>
+#include <WiFi.h>
 #include <vector>
 
 #include "auth.h"
 #include "version.h"
 #include "ntp_time.h"
+#include <esp_heap_caps.h>
 
 
 // ============================================================================
@@ -147,7 +148,7 @@ std::vector<std::pair<String,String>> settingsItems = {
     "<div class='content'>";
 }
 
-static String headerHtmlPublic(ESP8266WebServer &server, const String &title, const String &currentPath) {
+static String headerHtmlPublic(WebServer &server, const String &title, const String &currentPath) {
   bool authed = isAuthenticated(server);
 
   std::vector<std::pair<String,String>> settingsItems = {
@@ -193,7 +194,7 @@ static String footerHtml() {
 
 // Exported wrappers
 String pagesHeaderAuth(const String &title, const String &currentPath) { return headerHtmlAuth(title, currentPath); }
-String pagesHeaderPublic(ESP8266WebServer &server, const String &title, const String &currentPath) { return headerHtmlPublic(server, title, currentPath); }
+String pagesHeaderPublic(WebServer &server, const String &title, const String &currentPath) { return headerHtmlPublic(server, title, currentPath); }
 String pagesFooter() { return footerHtml(); }
 
 // ============================================================================
@@ -205,7 +206,11 @@ String cardSystem() {
   h += "<tr><th>Firmware</th><td>" + String(FW_NAME) + "</td></tr>";
   h += "<tr><th>Version</th><td>" + String(FW_VERSION) + "</td></tr>";
   h += "<tr><th>Build</th><td>" + String(FW_DATE) + "</td></tr>";
-  h += "<tr><th>Chip ID</th><td>" + String(ESP.getChipId(), HEX) + "</td></tr>";
+    uint32_t id = (uint32_t)(ESP.getEfuseMac() & 0xFFFFFFFF);
+      String chip = String(id, HEX);
+      chip.toUpperCase();
+      while (chip.length() < 8) chip = "0" + chip;
+  h += "<tr><th>Chip ID</th><td>" + chip + "</td></tr>";
   h += "<tr><th>CPU</th><td>" + String(ESP.getCpuFreqMHz()) + " MHz</td></tr>";
   h += "<tr><th>Uptime</th><td>" + uptimeString() + "</td></tr>";
   h += "</table></div>";
@@ -220,7 +225,7 @@ String cardNetzwerk() {
   h += "<tr><th>IP</th><td>" + WiFi.localIP().toString() + "</td></tr>";
   h += "<tr><th>Gateway</th><td>" + WiFi.gatewayIP().toString() + "</td></tr>";
   h += "<tr><th>RSSI</th><td>" + String(WiFi.RSSI()) + " dBm</td></tr>";
-  h += "<tr><th>mDNS</th><td>http://multi-sensor.local/</td></tr>";
+  h += "<tr><th>mDNS</th><td>http://" + String(WiFi.getHostname()) + ".local/</td></tr>";
   h += "</table></div>";
   return h;
 }
@@ -255,7 +260,7 @@ String cardSpeicher() {
   String h;
   h += "<div class='card'><h2>Speicher</h2><table class='tbl'>";
   h += "<tr><th>Free Heap</th><td>" + String(ESP.getFreeHeap()) + " B</td></tr>";
-  h += "<tr><th>Max Block</th><td>" + String(ESP.getMaxFreeBlockSize()) + " B</td></tr>";
+  h += "<tr><th>Max Block</th><td>" + String(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)) + " B</td></tr>";
   h += "</table></div>";
   return h;
 }

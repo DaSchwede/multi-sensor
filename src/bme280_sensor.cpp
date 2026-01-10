@@ -35,11 +35,11 @@ bool bmeIsOk() {
 }
 
 bool bmeBegin() {
-  Wire.begin(D2, D1);
-  Wire.setClock(100000); // sicherer Standard
-  delay(100);
+  delay(10);
 
+#if defined(DEBUG_I2C_SCAN)
   i2cScan();
+#endif
 
   uint8_t id76 = readChipId(0x76);
   Serial.printf("ChipID @0x76 = 0x%02X\n", id76);
@@ -47,13 +47,13 @@ bool bmeBegin() {
   if (id76 == 0x60) Serial.println("Das ist ein BME280.");
   if (id76 == 0x58 || id76 == 0x56 || id76 == 0x57) Serial.println("Das ist sehr wahrscheinlich ein BMP280.");
 
-  // explizit Wire übergeben:
   if (bme.begin(0x76, &Wire)) { ok = true; return true; }
   if (bme.begin(0x77, &Wire)) { ok = true; return true; }
 
   ok = false;
   return false;
 }
+
 
 SensorData bmeRead() {
   SensorData d;

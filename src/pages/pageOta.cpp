@@ -1,7 +1,7 @@
 #include <Arduino.h>
-#include <ESP8266WebServer.h>
-#include <Updater.h>
-#include <ESP8266WiFi.h>
+#include <WebServer.h>
+#include <Update.h>
+#include <WiFi.h>
 #include "pages.h"
 #include "auth.h"
 
@@ -16,10 +16,12 @@ static String humanSize(size_t b){
 }
 
 static String mkToken(){
-  return String(ESP.getChipId(), HEX) + "-" + String(millis(), HEX);
+  uint32_t id = (uint32_t)(ESP.getEfuseMac() & 0xFFFFFFFF);
+  String t = String(id, HEX); t.toUpperCase();
+  return t + "-" + String(millis(), HEX);
 }
 
-static bool tokenValid(ESP8266WebServer &server){
+static bool tokenValid(WebServer &server){
   // Token per Query: /ota_upload?token=...
   String tok = server.arg("token");
   if (!tok.length()) return false;
@@ -32,10 +34,15 @@ static bool tokenValid(ESP8266WebServer &server){
   return true;
 }
 
+static String updateErrorText() {
+  // ESP32: Fehlercode als Zahl, Text notfalls über Serial
+  return "Fehlercode " + String(Update.getError());
+}
+
 // ------------------------------------------------------------------
 // 1) /ota  (Sicherheitsabfrage + Admin-Passwort)
 // ------------------------------------------------------------------
-void pageOtaForm(ESP8266WebServer &server){
+void pageOtaForm(WebServer &server){
   AppConfig* cfg = pagesCfg();
   if (!cfg) { server.send(500, "text/plain", "cfg missing"); return; }
   if (!requireAuth(server, *cfg)) return;
@@ -81,7 +88,7 @@ void pageOtaForm(ESP8266WebServer &server){
 // ------------------------------------------------------------------
 // 2) /ota_prepare  (prüft Passwort + "armt" Token)
 // ------------------------------------------------------------------
-void pageOtaPrepare(ESP8266WebServer &server){
+void pageOtaPrepare(WebServer &server){
   AppConfig* cfg = pagesCfg();
   if (!cfg) { server.send(500, "text/plain", "cfg missing"); return; }
   if (!requireAuth(server, *cfg)) return;
@@ -120,7 +127,7 @@ void pageOtaPrepare(ESP8266WebServer &server){
 // ------------------------------------------------------------------
 // 3) /ota_upload GET (Upload-Form + Progress)
 // ------------------------------------------------------------------
-void pageOtaUploadForm(ESP8266WebServer &server){
+void pageOtaUploadForm(WebServer &server){
   AppConfig* cfg = pagesCfg();
   if (!cfg) { server.send(500, "text/plain", "cfg missing"); return; }
   if (!requireAuth(server, *cfg)) return;
@@ -164,7 +171,7 @@ void pageOtaUploadForm(ESP8266WebServer &server){
 // ------------------------------------------------------------------
 // 4) /ota_upload POST (Upload handler -> Update)
 // ------------------------------------------------------------------
-void pageOtaUpload(ESP8266WebServer &server){
+void pageOtaUpload(WebServer &server){
   AppConfig* cfg = pagesCfg();
   if (!cfg) { return; }
   if (!requireAuth(server, *cfg)) return;
@@ -183,9 +190,9 @@ void pageOtaUpload(ESP8266WebServer &server){
     size_t freeSketch = ESP.getFreeSketchSpace();
     size_t maxSketchSpace = (freeSketch - 0x1000) & 0xFFFFF000;
 
-    Update.runAsync(true);
-    if (!Update.begin(maxSketchSpace)) {
-      Serial.printf("OTA begin failed: %s\n", Update.getErrorString().c_str());
+    if (!Update.begin(maxSketchSpace, U_FLASH)) {
+      Serial.printf("OTA begin failed. Error=%u\n", (unsigned)Update.getError());
+      Update.printError(Serial);
     } else {
       Serial.println("OTA begin OK");
     }
@@ -206,7 +213,7 @@ void pageOtaUpload(ESP8266WebServer &server){
     gOtaToken = "";
 
     if (!ok) {
-      String err = String("OTA fehlgeschlagen: ") + Update.getErrorString();
+      String err = String("OTA fehlgeschlagen: ") + updateErrorText();
 
       String html = pagesHeaderAuth("OTA Update", "/settings");
       html += "<div class='card'><h2>Update fehlgeschlagen</h2>";

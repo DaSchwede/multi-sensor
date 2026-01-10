@@ -1,5 +1,5 @@
 #pragma once
-#include <ESP8266WebServer.h>
+#include <WebServer.h>
 #include "pages.h"
 #include "auth.h"
 #include "settings.h"
@@ -9,7 +9,7 @@ static inline int toIntSafe(const String& s, int defVal){
   return s.toInt();
 }
 
-static inline AppConfig* settingsRequireCfgAndAuth(ESP8266WebServer &server){
+static inline AppConfig* settingsRequireCfgAndAuth(WebServer &server){
   AppConfig* cfg = pagesCfg();
   if (!cfg) { server.send(500, "text/plain", "cfg missing"); return nullptr; }
   if (!requireAuth(server, *cfg)) return nullptr;

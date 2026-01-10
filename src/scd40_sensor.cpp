@@ -25,11 +25,11 @@ bool scdIsOk() {
 }
 
 bool scdBegin() {
-  Wire.begin(D2, D1);
-  Wire.setClock(100000);
-  delay(100);
+  delay(10);
 
-  i2cScan(); // zeigt dir auch 0x62
+  #if defined(DEBUG_I2C_SCAN)
+    i2cScan();
+  #endif
 
   scd4x.begin(Wire);
 

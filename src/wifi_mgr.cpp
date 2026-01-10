@@ -1,23 +1,43 @@
 #include "wifi_mgr.h"
-#include <ESP8266WiFi.h>
+#include <WiFi.h>
 #include <WiFiManager.h>
+#include <DNSServer.h>
+#include <WebServer.h>
+
+
+static bool wmInitialized = false;
 
 bool wifiEnsureConnected() {
   WiFi.mode(WIFI_STA);
 
-  WiFiManager wm;
-  wm.setConfigPortalTimeout(180); // 3 Minuten
-  wm.setAPCallback([](WiFiManager*) {
-    Serial.println("Captive Portal aktiv (AP).");
-  });
-
-  bool ok = wm.autoConnect("Multi-Sensor-Setup"); // optional: passwort setzen
-  if (!ok) {
-    Serial.println("WLAN nicht verbunden.");
-    return false;
+  // Bereits verbunden → nichts tun
+  if (WiFi.status() == WL_CONNECTED) {
+    return true;
   }
 
-  Serial.print("WLAN verbunden, IP: ");
-  Serial.println(WiFi.localIP());
-  return true;
+  // WiFiManager nur EINMAL verwenden
+  if (!wmInitialized) {
+    wmInitialized = true;
+
+    WiFiManager wm;
+    wm.setConfigPortalTimeout(180); // 3 Minuten
+    wm.setAPCallback([](WiFiManager*) {
+      Serial.println("Captive Portal aktiv (AP).");
+    });
+
+    if (!wm.autoConnect("Multi-Sensor-Setup")) {
+      Serial.println("WLAN nicht verbunden (Portal Timeout).");
+      return false;
+    }
+
+    Serial.print("WLAN verbunden, IP: ");
+    Serial.println(WiFi.localIP());
+    return true;
+  }
+
+  // Späterer Reconnect OHNE Portal
+  Serial.println("WLAN getrennt, versuche Reconnect...");
+  WiFi.reconnect();
+  delay(500);
+  return (WiFi.status() == WL_CONNECTED);
 }
