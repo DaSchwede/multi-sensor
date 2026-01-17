@@ -1,7 +1,7 @@
 # Multi-Sensor (ESP8266)
 
-Ein modularer, webbasierter **Multi-Sensor** auf Basis eines **ESP8266 (D1 mini / lite)**  
-mit **BME280**, Weboberfläche, Login-System, NTP-Zeit, UDP-Ausgabe (z.B. für Loxone)  
+Ein modularer, webbasierter **Multi-Sensor** auf Basis eines **ESP32-C3 Supermini** davor ESP8266 (D1 mini / lite)  
+mit **BME280**, **SCD40** Weboberfläche, Login-System, NTP-Zeit, UDP-Ausgabe (z.B. für Loxone)  
 und Dateisystem (LittleFS).
 
 ---
@@ -9,6 +9,7 @@ und Dateisystem (LittleFS).
 ## ✨ Features
 
 - 🌡️ **BME280**: Temperatur, Luftfeuchte, Luftdruck
+    - **SCD40**: Co2 
 - 🌐 **Weboberfläche**
   - Startseite mit Live-Daten (Auto-Refresh)
   - Einstellungen
@@ -30,7 +31,7 @@ und Dateisystem (LittleFS).
   - Backup / Restore über Web
 - ♻️ **Factory Reset**
 - 🔎 **Auffindbarkeit**
-  - Hostname & mDNS: `http://multi-sensor.local/`
+  - Hostname & mDNS: `http://multi-sensor-<SensorID>.local/`
 - 🧱 **Saubere Architektur**
   - `web_server` → Routing
   - `pages` → HTML & Seiten
@@ -41,8 +42,9 @@ und Dateisystem (LittleFS).
 
 ## 🧰 Hardware
 
-- ESP8266 (z.B. **Wemos D1 mini / lite**)
+- ESP32-C3 (z.B. **ESP32-C3 Supermini**)
 - **BME280** (I²C, 3.3 V)
+- **SCD40** (I²C, 3.3 V)
 - Pullups für I²C (meist auf Breakout vorhanden)
 
 **I²C-Pins (Standard):**
@@ -56,7 +58,6 @@ und Dateisystem (LittleFS).
 - **PlatformIO**
 - **Framework:** Arduino (ESP8266 Core)
 - **Libraries:**
-  - WiFiManager
   - ArduinoJson
   - Adafruit BME280
   - NTPClient

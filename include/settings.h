@@ -43,7 +43,9 @@ struct AppConfig {
   String ui_home_hide  = "";
 };
 
+
+// String defaultAdminHash();
 bool settingsBegin();
 bool loadConfig(AppConfig &cfg);
 bool saveConfig(const AppConfig &cfg);
-String defaultAdminHash();
+

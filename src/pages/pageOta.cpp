@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include "pages.h"
 #include "auth.h"
+#include "crypto_utils.h"
 
 static String gOtaToken;
 static uint32_t gOtaTokenAtMs = 0;

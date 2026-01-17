@@ -17,6 +17,10 @@
 static WebServer server(80);
 static AppConfig cfg;
 static SensorData liveData;
+static bool sensorsReady = false;
+static bool printed = false;
+static bool mdnsStarted = false;
+static String gHost;
 
 static uint32_t lastSend = 0;
 static uint32_t lastRead = 0;
@@ -33,12 +37,12 @@ static String makeShortId() {
   return chip.substring(chip.length() - 4); // z.B. A1B2
 }
 
+static bool appStarted = false;
+
 void setup() {
   Serial.begin(115200);
-    for (int i=0; i<30; i++) {   // 3 Sekunden
-  Serial.printf("BOOT tick %d\n", i);
-  delay(100);
-    }
+  delay(200);
+  Serial.println("Boot:serial ok");
 
   Serial.println("LittleFS begin...");
     if (!LittleFS.begin()) {
@@ -48,7 +52,6 @@ void setup() {
   Serial.println("style.css exists? " + String(LittleFS.exists("/style.css")));
   }
 
-
   if (!settingsBegin()) {
     Serial.println("LittleFS init fehlgeschlagen!");
   }
@@ -57,50 +60,44 @@ void setup() {
   // Host / IDs
   String shortId = makeShortId();
   String host = "multi-sensor-" + shortId;
+  gHost = host;
 
   // MQTT Client-ID automatisch setzen, falls leer
   if (cfg.mqtt_client_id.length() == 0) {
-    cfg.mqtt_client_id = host;   // sauber: gleiche ID wie Hostname
+    cfg.mqtt_client_id = host;
     saveConfig(cfg);
   }
 
-  // WLAN
+  // Hostname setzen BEVOR WiFi Begin
   WiFi.setHostname(host.c_str());
-  wifiEnsureConnected();
 
-  // mDNS NUR EINMAL
-  if (MDNS.begin(host.c_str())) {
-    MDNS.addService("http", "tcp", 80);
-    Serial.println("mDNS aktiv: http://" + host + ".local/");
-  } else {
-    Serial.println("mDNS Start fehlgeschlagen");
-  }
+  // WiFi-Manager (registriert /wifi + /api/wifi/* auf dem Server)
+  wifiMgrBegin(server, "Multi-Sensor");
 
-  // I2C zentral initialisieren (WICHTIG)
+
+  // I2C + Sensoren immer initialisieren (unabhängig vom WLAN)
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
   Wire.setClock(100000);
   delay(50);
 
-  // Sensoren (dürfen KEIN Wire.begin mehr machen)
-  if (!bmeBegin()) {
-    Serial.println("BME280 nicht gefunden (Adresse 0x76/0x77 prüfen)!");
-  }
+  if (!bmeBegin()) Serial.println("BME280 nicht gefunden!");
+  if (!scdBegin()) Serial.println("SCD40/41 nicht gefunden!");
 
-  if (!scdBegin()) {
-    Serial.println("SCD40/41 nicht gefunden (Adresse 0x62 prüfen)!");
-  }
 
-  ntpBegin(cfg);
-
+  // Webserver starten (damit /wifi erreichbar ist!)
   webServerBegin(server, cfg, &liveData, &lastReadMs, &lastSendMs);
-  Serial.println("Webserver gestartet.");
+  Serial.println("Webserver gestartet (inkl. /wifi).");
+  
+  ntpBegin(cfg);
+  Serial.println("App gestartet (Sensoren/NTP aktiv).");
 }
 
-void loop() {
-  webServerLoop(server);
-  ntpLoop();
 
-  // Sensor live lesen (z.B. 1x pro Sekunde)
+void loop() {
+  wifiMgrLoop();
+  server.handleClient();      // Portal + WebUI bedienen
+
+  // Sensor live lesen (immer!)
   if (millis() - lastRead >= 1000) {
     lastRead = millis();
 
@@ -115,20 +112,46 @@ void loop() {
     lastReadMs = millis();
   }
 
-  // UDP senden
+  // Ohne WLAN: kein NTP/UDP/mDNS
+  if (!wifiMgrIsConnected()) {
+    return;
+    static bool printed = false;
+    if (WiFi.status() == WL_CONNECTED && !printed) {
+      printed = true;
+      Serial.printf("WLAN verbunden: %s IP: %s\n",
+                WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+  }
+  if (WiFi.status() != WL_CONNECTED) printed = false;
+
+  }
+
+  // mDNS nur einmal nach Connect starten (bei Reconnect erneut)
+  static bool mdnsStarted = false;
+  static wl_status_t lastWiFiStatus = WL_IDLE_STATUS;
+
+  wl_status_t st = WiFi.status();
+  if (st != lastWiFiStatus) {
+    lastWiFiStatus = st;
+    if (st != WL_CONNECTED) mdnsStarted = false;
+  }
+
+  if (!mdnsStarted) {
+    String host = WiFi.getHostname(); // oder dein gHost
+    if (MDNS.begin(host.c_str())) {
+      MDNS.addService("http", "tcp", 80);
+      Serial.println("mDNS aktiv: http://" + host + ".local/");
+      mdnsStarted = true;
+    } else {
+      Serial.println("mDNS Start fehlgeschlagen");
+    }
+  }
+
+  // NTP/UDP wie früher
+  ntpLoop();
+
   if (millis() - lastSend >= cfg.send_interval_ms) {
     lastSend = millis();
     SendUDP(cfg, liveData);
     lastSendMs = millis();
   }
-
-  // WLAN-Reconnect
-  if (WiFi.status() == WL_CONNECTED) {
-  if (millis() - lastSend >= cfg.send_interval_ms) {
-    lastSend = millis();
-    SendUDP(cfg, liveData);
-    lastSendMs = millis();
-  }
-}
-
 }

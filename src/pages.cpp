@@ -127,6 +127,7 @@ std::vector<std::pair<String,String>> settingsItems = {
   { "/settings/time",  "Zeit / NTP" },
   { "/settings/mqtt",  "MQTT" },
   { "/settings/ui",    "Darstellung" },
+  { "/settings/wifi", "Wifi" },
   { "/settings/tools", "Tools" },
 };
   return String(
@@ -156,6 +157,7 @@ static String headerHtmlPublic(WebServer &server, const String &title, const Str
   { "/settings/time",  "Zeit / NTP" },
   { "/settings/mqtt",  "MQTT" },
   { "/settings/ui",    "Darstellung" },
+  { "/settings/wifi", "Wifi" },
   { "/settings/tools", "Tools" },
 };
 

@@ -88,8 +88,9 @@ bool requireAuth(WebServer &server, AppConfig &cfg) {
 }
 
 
-bool passwordIsDefault(AppConfig &cfg) {
-  return cfg.admin_pass_hash == defaultAdminHash();
+bool passwordIsDefault(const AppConfig &cfg) {
+  // Default-Passwort ist "admin"
+  return (cfg.admin_pass_hash.length() == 0) || (cfg.admin_pass_hash == sha1Hex("admin"));
 }
 
 void handleForcePassword(WebServer &server, AppConfig &cfg) {
@@ -158,17 +159,16 @@ void handleLogin(WebServer &server, AppConfig &cfg) {
     String pass = server.arg("pass");
 
     // 1) Benutzer/Passwort prüfen
-    if (user == cfg.admin_user && sha1Hex(pass) == cfg.admin_pass_hash) {
+    if (!server.hasArg("license_ok")) {
+      err = "Bitte Lizenz akzeptieren, um fortzufahren.";
+      doLogin = false;
+    } else if (user == cfg.admin_user && sha1Hex(pass) == cfg.admin_pass_hash) {
       doLogin = true;
     } else {
       err = "Login fehlgeschlagen (User/Passwort falsch).";
     }
 
-    // Lizenz MUSS akzeptiert werden
-  if (!server.hasArg("license_ok")) {
-      err = "Bitte Lizenz akzeptieren, um fortzufahren.";
-      doLogin = false;
-    }
+
     // 3) Erfolgreich → Session setzen
     if (doLogin) {
       sessionToken = randomToken();
