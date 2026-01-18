@@ -248,11 +248,21 @@ String cardSensor() {
       return String((int)lroundf(v)) + unit;
     };
 
-    h += "<tr><th>Temperatur</th><td>" + fmt1(gLive->temperature_c, " °C") + "</td></tr>";
-    h += "<tr><th>Feuchte</th><td>"    + fmt1(gLive->humidity_rh,   " %")  + "</td></tr>";
+    h += "<tr><th>Temperatur</th><td>" + fmt1(gLive->temperature_c, " °C")  + "</td></tr>";
+    h += "<tr><th>Feuchte</th><td>"    + fmt1(gLive->humidity_rh,   " %")   + "</td></tr>";
     h += "<tr><th>Druck</th><td>"      + fmt1(gLive->pressure_hpa,  " hPa") + "</td></tr>";
     h += "<tr><th>CO₂</th><td>"        + fmt0(gLive->co2_ppm,       " ppm") + "</td></tr>";
   }
+
+  /* --- Rescan Button --- */
+  h += "<tr><td colspan='2' style='padding-top:12px;'>"
+       "<form method='POST' action='/action/rescan_sensors' "
+       "onsubmit='return confirm(\"Sensoren neu erkennen?\");'>"
+       "<button class='btn-primary' type='submit'>"
+       "Sensoren neu erkennen"
+       "</button>"
+       "</form>"
+       "</td></tr>";
 
   h += "</table></div>";
   return h;

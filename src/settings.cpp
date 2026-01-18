@@ -42,13 +42,17 @@ bool loadConfig(AppConfig &cfg) {
   cfg.send_interval_ms = doc["send_interval_ms"] | cfg.send_interval_ms;
   cfg.sensor_id = doc["sensor_id"] | cfg.sensor_id;
 
+  cfg.udp_enabled = doc["udp_enabled"] | cfg.udp_enabled;
+
+  // NEU: falls noch nicht vorhanden, Default = alles (0x0F)
+  cfg.udp_fields_mask = doc["udp_fields_mask"] | cfg.udp_fields_mask;
+
+  cfg.udp_format = doc["udp_format"] | cfg.udp_format;
+
   cfg.ntp_server = doc["ntp_server"] | cfg.ntp_server;
   cfg.tz_auto_berlin  = doc["tz_auto_berlin"]  | cfg.tz_auto_berlin;
   cfg.tz_base_seconds = doc["tz_base_seconds"] | cfg.tz_base_seconds;
   cfg.dst_add_seconds = doc["dst_add_seconds"] | cfg.dst_add_seconds;
-
-
-  cfg.udp_format = doc["udp_format"] | cfg.udp_format;
 
   cfg.license_require_accept = doc["license_require_accept"] | cfg.license_require_accept;
 
@@ -94,6 +98,9 @@ bool saveConfig(const AppConfig &cfg) {
   doc["server_udp_port"] = cfg.server_udp_port;
   doc["send_interval_ms"] = cfg.send_interval_ms;
   doc["sensor_id"] = cfg.sensor_id;
+
+  doc["udp_enabled"] = cfg.udp_enabled;
+  doc["udp_fields_mask"] = cfg.udp_fields_mask;
 
   doc["ntp_server"] = cfg.ntp_server;
   doc["tz_auto_berlin"] = cfg.tz_auto_berlin;

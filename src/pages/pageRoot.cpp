@@ -8,7 +8,15 @@ static String cardLiveBox() {
 
   String h;
   h += "<div class='card'><h2>Live</h2>";
-  h += "<div class='badge-row'><span id='sbadge' class='badge badge-ok'>Sensor OK</span></div>";  h += "<table class='tbl'>";
+  h += "<div class='badge-row'>"
+     "<span id='sbadge' class='badge badge-ok'>Sensor OK</span>"
+     "<button id='rescanBtn' class='icon-btn' type='button' "
+     "title='Sensoren neu erkennen' aria-label='Sensoren neu erkennen' "
+     "onclick='rescanSensors()'>"
+     "&#x21bb;"
+     "</button>"
+     "</div>";
+  h += "<table class='tbl'>";
   h += "<tr><th>Temperatur</th><td class='value' id='tval'>" + String(live ? live->temperature_c : 0, 2) + " °C</td></tr>";
   h += "<tr><th>Feuchte</th><td class='value' id='hval'>" + String(live ? live->humidity_rh   : 0, 2) + " %</td></tr>";
   h += "<tr><th>Druck</th><td class='value' id='pval'>" + String(live ? live->pressure_hpa  : 0, 2) + " hPa</td></tr>";
@@ -70,6 +78,30 @@ async function refreshLive(){
     }
   }catch(e){}
 }
+  async function rescanSensors(){
+  const b = document.getElementById('rescanBtn');
+  if(b){
+    b.disabled = true;
+    b.classList.add('spin');
+  }
+  try{
+    const r = await fetch('/action/rescan_sensors', {
+      method: 'POST',
+      headers: {'Content-Type':'application/x-www-form-urlencoded'},
+      body: 'src=live'
+    });
+    // egal ob ok oder nicht: danach Live-Daten neu holen
+    await new Promise(res => setTimeout(res, 300)); // kurz warten, damit Rescan im Loop ankommt
+    await refreshLive();
+  }catch(e){
+  }finally{
+    if(b){
+      b.disabled = false;
+      b.classList.remove('spin');
+    }
+  }
+}
+
 setInterval(refreshLive, 5000);
 </script>
 )JS";

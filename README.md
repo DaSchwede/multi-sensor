@@ -1,4 +1,4 @@
-# Multi-Sensor (ESP8266)
+# Multi-Sensor (ESP32-C3)
 
 Ein modularer, webbasierter **Multi-Sensor** auf Basis eines **ESP32-C3 Supermini** davor ESP8266 (D1 mini / lite)  
 mit **BME280**, **SCD40** Weboberfläche, Login-System, NTP-Zeit, UDP-Ausgabe (z.B. für Loxone)  
@@ -108,6 +108,7 @@ Alle Einstellungen erfolgen über die Weboberfläche:
   - Sensor-ID
   - NTP-Server
   - UDP-Format (CSV / JSON)
+  - Wifi
   - Backup / Restore
   - Factory Reset
 

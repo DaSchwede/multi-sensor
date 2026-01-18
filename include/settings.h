@@ -3,6 +3,7 @@
 
 struct AppConfig {
   // UDP
+  bool udp_enabled = true;
   String server_udp_ip = "192.168.1.10";
   uint16_t server_udp_port = 7000;
   uint32_t send_interval_ms = 5000;
@@ -27,6 +28,10 @@ struct AppConfig {
   int tz_base_seconds = 3600;
   int dst_add_seconds = 3600;
 
+  // Welche Werte sollen gesendet werden? (Bitmaske)
+  // Bit 0: Temp, Bit 1: RH, Bit 2: Pressure, Bit 3: CO2
+  uint32_t udp_fields_mask = 0x0F;         // <-- NEU (Default: alles)
+  
   int udp_format = 0; // 0=CSV, 1=JSON
 
   // Admin

@@ -2,6 +2,7 @@
 #include <LittleFS.h>
 #include "auth.h"
 #include "pages.h"
+#include "sensors_ctrl.h"
 #include "settings_config/pageSettingsUdp.h"
 #include "settings_config/pageSettingsTime.h"
 #include "settings_config/pageSettingsMqtt.h"
@@ -30,6 +31,20 @@ void webServerBegin(WebServer &server,
 
   // Auth-Routen (/login, /force_pw, /logout)
   authAttach(server, cfg);
+
+  server.on("/action/rescan_sensors", HTTP_POST, [&](){
+    // Auth check wie bei settings-Seiten
+    AppConfig* c = settingsRequireCfgAndAuth(server);
+    if (!c) return;
+
+    // Rescan anstoßen
+    extern void requestSensorRescan(); // falls in main.cpp static ist: siehe Hinweis unten
+    requestSensorRescan();
+
+    // Redirect zurück (z.B. Tools)
+    server.sendHeader("Location", "/settings/tools?msg=rescan", true);
+    server.send(302, "text/plain", "");
+  });
 
     // Cookie-Header lesen können
   static const char* headerKeys[] = { "Cookie" };

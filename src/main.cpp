@@ -13,6 +13,7 @@
 #include "ntp_time.h"
 #include "scd40_sensor.h"
 #include <math.h>
+#include "sensors_ctrl.h"
 
 static WebServer server(80);
 static AppConfig cfg;
@@ -35,6 +36,29 @@ static String makeShortId() {
   chip.toUpperCase();
   while (chip.length() < 8) chip = "0" + chip;
   return chip.substring(chip.length() - 4); // z.B. A1B2
+}
+
+volatile bool gRequestSensorRescan = false;
+void requestSensorRescan() { gRequestSensorRescan = true; }
+
+static void doSensorRescan() {
+  Serial.println("Rescan: I2C/Sensoren neu initialisieren...");
+
+  // I2C soft reset
+  Wire.end();
+  delay(50);
+  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+  Wire.setClock(100000);
+  delay(50);
+
+  bool okBme = bmeBegin();
+  bool okScd = scdBegin();
+
+  if (!okBme) Serial.println("Rescan: BME280 weiterhin nicht gefunden.");
+  if (!okScd) Serial.println("Rescan: SCD40/41 weiterhin nicht gefunden.");
+
+  // Optional: wenn SCD nicht da -> liveData CO2 auf "leer"
+  if (!okScd) liveData.co2_ppm = NAN;
 }
 
 static bool appStarted = false;
@@ -83,6 +107,12 @@ void setup() {
   if (!bmeBegin()) Serial.println("BME280 nicht gefunden!");
   if (!scdBegin()) Serial.println("SCD40/41 nicht gefunden!");
 
+    // UDP senden
+  if (cfg.udp_enabled && (millis() - lastSend >= cfg.send_interval_ms)) {
+    lastSend = millis();
+    SendUDP(cfg, liveData);
+    lastSendMs = millis();
+  }
 
   // Webserver starten (damit /wifi erreichbar ist!)
   webServerBegin(server, cfg, &liveData, &lastReadMs, &lastSendMs);
@@ -96,6 +126,11 @@ void setup() {
 void loop() {
   wifiMgrLoop();
   server.handleClient();      // Portal + WebUI bedienen
+
+    if (gRequestSensorRescan) {
+    gRequestSensorRescan = false;
+    doSensorRescan();
+    }
 
   // Sensor live lesen (immer!)
   if (millis() - lastRead >= 1000) {
