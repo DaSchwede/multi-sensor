@@ -1,7 +1,34 @@
 #pragma once
 #include <Arduino.h>
 
+// MQTT Publish Flags (Bitmaske)
+#define MQTT_PUB_TEMP   (1UL << 0)
+#define MQTT_PUB_HUM    (1UL << 1)
+#define MQTT_PUB_PRESS  (1UL << 2)
+#define MQTT_PUB_CO2    (1UL << 3)
+
 struct AppConfig {
+
+  // MQTT LWT
+  bool   mqtt_lwt_enabled = true;
+  String mqtt_lwt_topic   = "status";
+  String mqtt_lwt_online  = "online";
+  String mqtt_lwt_offline = "offline";
+  bool   mqtt_lwt_retain  = true;
+  uint8_t mqtt_lwt_qos    = 1;
+
+  uint32_t mqtt_pub_mask = MQTT_PUB_TEMP | MQTT_PUB_HUM | MQTT_PUB_PRESS | MQTT_PUB_CO2;
+
+  // MQTT TLS
+  bool   mqtt_tls_enabled = false;
+  String mqtt_tls_ca;   // PEM Zertifikat
+
+  //Menü
+  bool mqtt_ha_discovery = false;
+  String mqtt_ha_prefix = "homeassistant";
+  bool mqtt_ha_retain = true;
+  String device_name = ""; // wenn leer -> sensor_id verwenden
+
   // UDP
   bool udp_enabled = true;
   String server_udp_ip = "192.168.1.10";

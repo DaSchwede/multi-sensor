@@ -192,3 +192,36 @@
 
   window.addEventListener("load", setupOtaUpload);
 })();
+
+// ===== Settings: Menü ein/ausblenden =====
+function applyMqttUi() {
+  const mqtt = document.getElementById("sw_mqtt")?.checked;
+  const ha   = document.getElementById("sw_ha")?.checked;
+  const tls = document.getElementById("sw_tls")?.checked;
+  const lwt = document.getElementById("sw_lwt")?.checked;
+
+  document.querySelectorAll("[data-requires]").forEach(el => {
+    const req = (el.getAttribute("data-requires") || "")
+      .split(",").map(s => s.trim()).filter(Boolean);
+
+    let ok = true;
+    for (const r of req) {
+      if (r === "mqtt" && !mqtt) ok = false;
+      if (r === "ha"   && !ha)   ok = false;
+      if (r === "tls" && !tls) ok = false;
+      if (r === "lwt" && !lwt) ok = false;
+    }
+    el.style.display = ok ? "" : "none";
+  });
+}
+
+function hookMqttUi() {
+  ["sw_mqtt","sw_ha","sw_tls","sw_lwt"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("change", applyMqttUi);
+  });
+  applyMqttUi();
+}
+
+document.addEventListener("DOMContentLoaded", hookMqttUi);
+

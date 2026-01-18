@@ -27,15 +27,24 @@ bool loadConfig(AppConfig &cfg) {
   File f = LittleFS.open(CFG_FILE, "r");
   if (!f) return false;
 
-  JsonDocument doc;                  // <-- doc HIER deklarieren
+  DynamicJsonDocument doc(12288);
+
+            // <-- doc HIER deklarieren
   auto err = deserializeJson(doc, f);
   f.close();
   if (err) return false;
+
+  if (cfg.mqtt_lwt_qos > 1) cfg.mqtt_lwt_qos = 1;
 
   // ----- ab hier doc benutzen -----
 
   cfg.ui_root_order = doc["ui_root_order"] | cfg.ui_root_order;
   cfg.ui_info_order = doc["ui_info_order"] | cfg.ui_info_order;
+  cfg.ui_info_hide  = doc["ui_info_hide"]  | cfg.ui_info_hide;
+  cfg.ui_home_order = doc["ui_home_order"] | cfg.ui_home_order;
+  cfg.ui_home_hide  = doc["ui_home_hide"]  | cfg.ui_home_hide;
+
+  cfg.device_name = doc["device_name"] | cfg.device_name;
 
   cfg.server_udp_ip = doc["server_udp_ip"] | cfg.server_udp_ip;
   cfg.server_udp_port = doc["server_udp_port"] | cfg.server_udp_port;
@@ -73,11 +82,18 @@ bool loadConfig(AppConfig &cfg) {
   cfg.mqtt_qos           = doc["mqtt_qos"]           | cfg.mqtt_qos;
   cfg.mqtt_keepalive     = doc["mqtt_keepalive"]     | cfg.mqtt_keepalive;
   cfg.mqtt_clean_session = doc["mqtt_clean_session"] | cfg.mqtt_clean_session;
-
-
-  cfg.ui_info_hide  = doc["ui_info_hide"]  | cfg.ui_info_hide;
-  cfg.ui_home_order = doc["ui_home_order"] | cfg.ui_home_order;
-  cfg.ui_home_hide  = doc["ui_home_hide"]  | cfg.ui_home_hide;
+  cfg.mqtt_tls_enabled = doc["mqtt_tls_enabled"] | cfg.mqtt_tls_enabled;
+  cfg.mqtt_tls_ca      = doc["mqtt_tls_ca"]      | cfg.mqtt_tls_ca;
+  cfg.mqtt_lwt_enabled = doc["mqtt_lwt_enabled"] | cfg.mqtt_lwt_enabled;
+  cfg.mqtt_lwt_topic   = doc["mqtt_lwt_topic"]   | cfg.mqtt_lwt_topic;
+  cfg.mqtt_lwt_online  = doc["mqtt_lwt_online"]  | cfg.mqtt_lwt_online;
+  cfg.mqtt_lwt_offline = doc["mqtt_lwt_offline"] | cfg.mqtt_lwt_offline;
+  cfg.mqtt_lwt_retain  = doc["mqtt_lwt_retain"]  | cfg.mqtt_lwt_retain;
+  cfg.mqtt_lwt_qos     = doc["mqtt_lwt_qos"]     | cfg.mqtt_lwt_qos;
+  cfg.mqtt_pub_mask = doc["mqtt_pub_mask"] | cfg.mqtt_pub_mask;
+  cfg.mqtt_ha_discovery = doc["mqtt_ha_discovery"] | cfg.mqtt_ha_discovery;
+  cfg.mqtt_ha_prefix    = doc["mqtt_ha_prefix"]    | cfg.mqtt_ha_prefix;
+  cfg.mqtt_ha_retain    = doc["mqtt_ha_retain"]    | cfg.mqtt_ha_retain;
 
     // Sanity
   if (cfg.mqtt_port == 0) cfg.mqtt_port = 1883;
@@ -89,10 +105,14 @@ bool loadConfig(AppConfig &cfg) {
 
 
 bool saveConfig(const AppConfig &cfg) {
-  JsonDocument doc;
-
+  DynamicJsonDocument doc(12288);
   doc["ui_root_order"] = cfg.ui_root_order;
-  doc["ui_info_order"] = cfg.ui_info_order;
+  doc["ui_info_order"] = cfg.ui_info_order;  
+  doc["ui_info_hide"]  = cfg.ui_info_hide;
+  doc["ui_home_order"] = cfg.ui_home_order;
+  doc["ui_home_hide"]  = cfg.ui_home_hide;
+
+  doc["device_name"] = cfg.device_name;
 
   doc["server_udp_ip"] = cfg.server_udp_ip;
   doc["server_udp_port"] = cfg.server_udp_port;
@@ -127,11 +147,18 @@ bool saveConfig(const AppConfig &cfg) {
   doc["mqtt_qos"]           = cfg.mqtt_qos;
   doc["mqtt_keepalive"]     = cfg.mqtt_keepalive;
   doc["mqtt_clean_session"] = cfg.mqtt_clean_session;
-
-
-  doc["ui_info_hide"]  = cfg.ui_info_hide;
-  doc["ui_home_order"] = cfg.ui_home_order;
-  doc["ui_home_hide"]  = cfg.ui_home_hide;
+  doc["mqtt_tls_enabled"] = cfg.mqtt_tls_enabled;
+  doc["mqtt_tls_ca"]      = cfg.mqtt_tls_ca;
+  doc["mqtt_lwt_enabled"] = cfg.mqtt_lwt_enabled;
+  doc["mqtt_lwt_topic"]   = cfg.mqtt_lwt_topic;
+  doc["mqtt_lwt_online"]  = cfg.mqtt_lwt_online;
+  doc["mqtt_lwt_offline"] = cfg.mqtt_lwt_offline;
+  doc["mqtt_lwt_retain"]  = cfg.mqtt_lwt_retain;
+  doc["mqtt_lwt_qos"]     = cfg.mqtt_lwt_qos;
+  doc["mqtt_pub_mask"] = cfg.mqtt_pub_mask;  
+  doc["mqtt_ha_discovery"] = cfg.mqtt_ha_discovery;
+  doc["mqtt_ha_prefix"]    = cfg.mqtt_ha_prefix;
+  doc["mqtt_ha_retain"]    = cfg.mqtt_ha_retain;
 
 
   File f = LittleFS.open(CFG_FILE, "w");

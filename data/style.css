@@ -407,8 +407,8 @@ button, .btn{
 .switch {
   position: relative;
   display: inline-block;
-  width: 48px;
-  height: 26px;
+  width: 44px;
+  height: 24px;
   vertical-align: middle;
 }
 

@@ -14,6 +14,8 @@
 #include "scd40_sensor.h"
 #include <math.h>
 #include "sensors_ctrl.h"
+#include "mqtt_client.h"
+
 
 static WebServer server(80);
 static AppConfig cfg;
@@ -98,6 +100,7 @@ void setup() {
   // WiFi-Manager (registriert /wifi + /api/wifi/* auf dem Server)
   wifiMgrBegin(server, "Multi-Sensor");
 
+  mqttBegin(cfg);
 
   // I2C + Sensoren immer initialisieren (unabhängig vom WLAN)
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
@@ -120,11 +123,18 @@ void setup() {
   
   ntpBegin(cfg);
   Serial.println("App gestartet (Sensoren/NTP aktiv).");
+
+  //Mqtt
+  mqttBegin(cfg);
+  Serial.println("MQTT Client gestartet.");
+  
 }
 
 
 void loop() {
   wifiMgrLoop();
+  mqttLoop(cfg);
+
   server.handleClient();      // Portal + WebUI bedienen
 
     if (gRequestSensorRescan) {
@@ -187,6 +197,12 @@ void loop() {
   if (millis() - lastSend >= cfg.send_interval_ms) {
     lastSend = millis();
     SendUDP(cfg, liveData);
+      // MQTT publish
+    mqttPublish(cfg, "temperature", String(liveData.temperature_c, 1));
+    mqttPublish(cfg, "humidity",    String(liveData.humidity_rh, 1));
+    mqttPublish(cfg, "pressure",    String(liveData.pressure_hpa, 1));
+    mqttPublish(cfg, "co2",         String((int)liveData.co2_ppm));
     lastSendMs = millis();
   }
+
 }
