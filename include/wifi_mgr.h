@@ -8,19 +8,15 @@ void wifiMgrLoop();
 bool wifiMgrIsConnected();
 bool wifiMgrPortalActive();
 
-void wifiMgrStartPortal();
-void wifiMgrForget();
-
 bool wifiMgrHasCredentials();
 String wifiMgrApSsid();
-void wifiMgrStartPortalManual();   // STA trennen + Portal starten
+String wifiMgrApPass();              // <— NEU: Setup-AP Passwort (WPA2)
 
-void wifiMgrRequestStartPortalManual(); // requested: STA trennen + AP starten
-void wifiMgrRequestForget();            // requested: creds löschen + AP starten
-String wifiMgrApSsid();
-bool wifiMgrHasCredentials();
+void wifiMgrRequestStartPortal();    // aus Settings: AP+STA starten, /wifi öffnen
+void wifiMgrRequestForget();         // Credentials löschen, AP-only starten
+void wifiMgrRequestWifiUi(uint32_t seconds); // /wifi Zeitfenster im Heimnetz
+void wifiMgrRequestStartPortalKeepSta();
 
-void wifiMgrRequestWifiUi(uint32_t seconds); // erlaubt /wifi kurzzeitig
-void wifiMgrRequestStartPortalKeepSta();     // AP starten, STA behalten
+
 
 

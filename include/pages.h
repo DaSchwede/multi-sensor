@@ -27,8 +27,16 @@ void pageFactoryResetDo(WebServer &server);
 void pageSettingsUdp(WebServer &server);
 void pageSettingsTime(WebServer &server);
 void pageSettingsMqtt(WebServer &server);
+void pageSettingsLogger(WebServer &server);
 void pageSettingsUi(WebServer &server);
+void pageSettingsWifi(WebServer &server); 
 void pageSettingsTools(WebServer &server);
+
+// settings info
+void pageSystemInfo(WebServer &server);
+
+// Logger
+void pageLogger(WebServer &server);
 
 // OTA
 void pageOtaForm(WebServer &server);        // Sicherheitsabfrage + Admin-Passwort
@@ -38,6 +46,7 @@ void pageOtaUpload(WebServer &server);      // Upload-Handler
 
 // API
 void apiLive(WebServer &server);
+void apiHistory(WebServer &server);
 
 // ===== Shared helpers (werden in pages.cpp definiert, von Subpages genutzt) =====
 AppConfig* pagesCfg();

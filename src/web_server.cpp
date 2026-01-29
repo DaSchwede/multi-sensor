@@ -3,12 +3,8 @@
 #include "auth.h"
 #include "pages.h"
 #include "sensors_ctrl.h"
-#include "settings_config/pageSettingsUdp.h"
-#include "settings_config/pageSettingsTime.h"
-#include "settings_config/pageSettingsMqtt.h"
-#include "settings_config/pageSettingsUi.h"
-#include "settings_config/pageSettingsWifi.h"
 #include "settings_config/settings_common.h"
+#include "logger.h"
 
 void webServerBegin(WebServer &server,
                     AppConfig &cfg,
@@ -29,6 +25,11 @@ void webServerBegin(WebServer &server,
   server.serveStatic("/logo_name_weiss_gruen.svg", LittleFS, "/logo_name_weiss_gruen.svg");
   server.serveStatic("/logo_name_gruen.svg", LittleFS, "/logo_name_gruen.svg");
 
+      // Cookie-Header lesen können
+  static const char* headerKeys[] = { "Cookie" };
+  server.collectHeaders(headerKeys, sizeof(headerKeys) / sizeof(headerKeys[0]));
+
+
   // Auth-Routen (/login, /force_pw, /logout)
   authAttach(server, cfg);
 
@@ -45,19 +46,32 @@ void webServerBegin(WebServer &server,
     server.sendHeader("Location", "/settings/tools?msg=rescan", true);
     server.send(302, "text/plain", "");
   });
+  
+  server.on("/action/logger_rescan", HTTP_POST, [&](){
+  AppConfig* c = settingsRequireCfgAndAuth(server);
+  if (!c) return;
 
-    // Cookie-Header lesen können
-  static const char* headerKeys[] = { "Cookie" };
-  server.collectHeaders(headerKeys, sizeof(headerKeys) / sizeof(headerKeys[0]));
+  loggerRescan();
+
+  server.sendHeader("Location", "/settings/logger?msg=rescan", true);
+  server.send(302, "text/plain", "");
+  });
+
 
   server.on("/license", HTTP_GET, [&](){ pageLicense(server); });
 
   // API
   server.on("/api/live", HTTP_GET, [&](){ apiLive(server); });
+  server.on("/api/history", HTTP_GET, [&](){ apiHistory(server); });
 
   // Seiten
   server.on("/", HTTP_GET,        [&](){ pageRoot(server); });
   server.on("/info", HTTP_GET,    [&](){ pageInfo(server); });
+
+  server.on("/logger", HTTP_GET,  [&](){ pageLogger(server); });
+
+  server.on("/info/system", HTTP_GET, [&](){ pageSystemInfo(server); });
+
 
   server.on("/settings", HTTP_GET, [&](){
   server.sendHeader("Location", "/settings/udp", true);
@@ -72,6 +86,9 @@ void webServerBegin(WebServer &server,
   
   server.on("/settings/mqtt",  HTTP_GET, [&](){ pageSettingsMqtt(server); });
   server.on("/settings/mqtt",  HTTP_POST, [&](){ pageSettingsMqtt(server); });
+
+  server.on("/settings/logger", HTTP_GET, [&](){ pageSettingsLogger(server); });
+  server.on("/settings/logger", HTTP_POST, [&](){ pageSettingsLogger(server); });
 
   server.on("/settings/ui",    HTTP_GET, [&](){ pageSettingsUi(server); });
   server.on("/settings/ui",    HTTP_POST, [&](){ pageSettingsUi(server); });

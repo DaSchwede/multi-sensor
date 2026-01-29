@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include "log_bits.h"
 
 // MQTT Publish Flags (Bitmaske)
 #define MQTT_PUB_TEMP   (1UL << 0)
@@ -9,7 +10,7 @@
 
 struct AppConfig {
 
-  // MQTT LWT
+    // MQTT LWT
   bool   mqtt_lwt_enabled = true;
   String mqtt_lwt_topic   = "status";
   String mqtt_lwt_online  = "online";
@@ -48,6 +49,16 @@ struct AppConfig {
   uint8_t mqtt_qos           = 0;           // 0..2
   uint16_t mqtt_keepalive    = 30;          // Sekunden
   bool   mqtt_clean_session  = true;
+
+  // Logger
+  bool     log_enabled        = false;
+  uint16_t log_interval_min   = 30;
+
+  // Default: Temp+Hum+Press+CO2
+  uint32_t log_metric_mask    = LOG_TEMP | LOG_HUM | LOG_PRESS | LOG_CO2;
+
+  // 0 = nie löschen
+  uint16_t log_retention_days = 30;
 
   // NTP
   String ntp_server = "pool.ntp.org";

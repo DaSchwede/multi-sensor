@@ -126,10 +126,23 @@ std::vector<std::pair<String,String>> settingsItems = {
   { "/settings/udp",   "UDP" },
   { "/settings/time",  "Zeit / NTP" },
   { "/settings/mqtt",  "MQTT" },
+  { "/settings/logger", "Logger" },
   { "/settings/ui",    "Darstellung" },
   { "/settings/wifi", "Wifi" },
   { "/settings/tools", "Tools" },
 };
+  // Dropdown-Items (Info)
+std::vector<std::pair<String,String>> infoItems = {
+    { "/info",        "Übersicht" },
+    { "/info/system", "Systeminfo" },
+    { "/logger", "Logger" },
+    { "/info/time",   "Zeit / NTP" },
+        // später erweiterbar:
+    // { "/info/network", "Netzwerk" },
+    // { "/info/sensor",  "Sensor" },
+  };
+
+
   return String(
     "<!doctype html><html><head><meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
@@ -141,7 +154,7 @@ std::vector<std::pair<String,String>> settingsItems = {
     "<div class='topbar'><img src='/logo_name_weiss.svg' alt='Multi Sensors' class='logo'></div>"
     "<div class='menubar'>"
       + navLink("/", "Startseite", currentPath)
-      + navLink("/info", "Info", currentPath)
+      + navDrop("Info", "/info", currentPath, infoItems)
       + navDrop("Einstellungen", "/settings/udp", currentPath, settingsItems)
       + navLink("/about", "Über", currentPath)
       + "<span class='right'><a href='/logout'>Abmelden</a></span>"
@@ -152,10 +165,21 @@ std::vector<std::pair<String,String>> settingsItems = {
 static String headerHtmlPublic(WebServer &server, const String &title, const String &currentPath) {
   bool authed = isAuthenticated(server);
 
+  std::vector<std::pair<String,String>> infoItems = {
+  { "/info",           "Übersicht" },
+  { "/info/system",    "Systeminfo" },
+  //{ "/info/network",   "Netzwerk" },
+  //{ "/info/sensor",    "Sensor" },
+  //{ "/info/memory",    "Speicher" },
+  //{ "/info/time",      "Zeit / NTP" },
+  //{ "/info/settings",  "Einstellungen" },
+};
+
   std::vector<std::pair<String,String>> settingsItems = {
   { "/settings/udp",   "UDP" },
   { "/settings/time",  "Zeit / NTP" },
   { "/settings/mqtt",  "MQTT" },
+  { "/settings/logger", "Logger" },
   { "/settings/ui",    "Darstellung" },
   { "/settings/wifi", "Wifi" },
   { "/settings/tools", "Tools" },
@@ -165,7 +189,7 @@ static String headerHtmlPublic(WebServer &server, const String &title, const Str
   if (authed) {
     menu =
       navLink("/", "Startseite", currentPath) +
-      navLink("/info", "Info", currentPath) +
+      navDrop("Info", "/info", currentPath, infoItems) +
       navDrop("Einstellungen", "/settings/udp", currentPath, settingsItems) +
       navLink("/about", "Über", currentPath) +
       navLink("/license", "Lizenz", currentPath) +
@@ -295,7 +319,7 @@ String cardZeit() {
 
 String cardAktuelleEinstellungen() {
   String h;
-  h += "<div class='card'><h2>Aktuelle Einstellungen</h2><table class='tbl'>";
+  h += "<div class='card'><h2>UDP Einstellungen</h2><table class='tbl'>";
 
   if (!gCfg) {
     h += "<tr><th>Status</th><td>cfg fehlt</td></tr>";

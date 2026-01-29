@@ -15,15 +15,19 @@
 #include <math.h>
 #include "sensors_ctrl.h"
 #include "mqtt_client.h"
-
+#include "logger.h"
 
 static WebServer server(80);
 static AppConfig cfg;
 static SensorData liveData;
 static bool sensorsReady = false;
 static bool printed = false;
+static bool netStarted = false;   // NTP/MQTT/mDNS einmal starten pro Connect
 static bool mdnsStarted = false;
 static String gHost;
+static bool wifiReallyConnected() {
+  return WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0,0,0,0);
+}
 
 static uint32_t lastSend = 0;
 static uint32_t lastRead = 0;
@@ -71,7 +75,7 @@ void setup() {
   Serial.println("Boot:serial ok");
 
   Serial.println("LittleFS begin...");
-    if (!LittleFS.begin()) {
+    if (!LittleFS.begin(true)) {
   Serial.println("LittleFS MOUNT FAIL!");
   } else {
   Serial.printf("LittleFS OK total=%u used=%u\n", LittleFS.totalBytes(), LittleFS.usedBytes());
@@ -100,7 +104,8 @@ void setup() {
   // WiFi-Manager (registriert /wifi + /api/wifi/* auf dem Server)
   wifiMgrBegin(server, "Multi-Sensor");
 
-  mqttBegin(cfg);
+  //mqttBegin(cfg);
+  //  Serial.println("MQTT Client gestartet.");
 
   // I2C + Sensoren immer initialisieren (unabhängig vom WLAN)
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
@@ -111,98 +116,87 @@ void setup() {
   if (!scdBegin()) Serial.println("SCD40/41 nicht gefunden!");
 
     // UDP senden
-  if (cfg.udp_enabled && (millis() - lastSend >= cfg.send_interval_ms)) {
-    lastSend = millis();
-    SendUDP(cfg, liveData);
-    lastSendMs = millis();
-  }
+  //if (cfg.udp_enabled && (millis() - lastSend >= cfg.send_interval_ms)) {
+  //  lastSend = millis();
+  //  SendUDP(cfg, liveData);
+  //  lastSendMs = millis();
+  //}
 
   // Webserver starten (damit /wifi erreichbar ist!)
   webServerBegin(server, cfg, &liveData, &lastReadMs, &lastSendMs);
   Serial.println("Webserver gestartet (inkl. /wifi).");
   
-  ntpBegin(cfg);
-  Serial.println("App gestartet (Sensoren/NTP aktiv).");
+  loggerBegin(cfg);
 
-  //Mqtt
-  mqttBegin(cfg);
-  Serial.println("MQTT Client gestartet.");
+  //ntpBegin(cfg);
+  //Serial.println("App gestartet (Sensoren/NTP aktiv).");
+
   
 }
 
-
 void loop() {
   wifiMgrLoop();
-  mqttLoop(cfg);
+  server.handleClient();
 
-  server.handleClient();      // Portal + WebUI bedienen
-
-    if (gRequestSensorRescan) {
-    gRequestSensorRescan = false;
-    doSensorRescan();
-    }
-
-  // Sensor live lesen (immer!)
+  // Sensoren dürfen immer laufen
   if (millis() - lastRead >= 1000) {
     lastRead = millis();
-
     SensorData b = bmeRead();
     if (!isnan(b.temperature_c)) liveData.temperature_c = b.temperature_c;
     if (!isnan(b.humidity_rh))   liveData.humidity_rh   = b.humidity_rh;
     if (!isnan(b.pressure_hpa))  liveData.pressure_hpa  = b.pressure_hpa;
-
     SensorData s = scdRead();
-    if (!isnan(s.co2_ppm))       liveData.co2_ppm       = s.co2_ppm;
-
+    if (!isnan(s.co2_ppm)) liveData.co2_ppm = s.co2_ppm;
     lastReadMs = millis();
   }
 
-  // Ohne WLAN: kein NTP/UDP/mDNS
-  if (!wifiMgrIsConnected()) {
-    return;
-    static bool printed = false;
-    if (WiFi.status() == WL_CONNECTED && !printed) {
-      printed = true;
-      Serial.printf("WLAN verbunden: %s IP: %s\n",
-                WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
-  }
-  if (WiFi.status() != WL_CONNECTED) printed = false;
-
+  // Offline: Netzwerk-Subsysteme stoppen/auslassen
+  if (!wifiReallyConnected()) {
+  if (mdnsStarted) { MDNS.end(); mdnsStarted = false; }
+  netStarted = false;
+  // loggerLoop optional trotzdem, aber erst wenn time gültig -> lassen wir es weg
+  return;
   }
 
-  // mDNS nur einmal nach Connect starten (bei Reconnect erneut)
-  static bool mdnsStarted = false;
-  static wl_status_t lastWiFiStatus = WL_IDLE_STATUS;
+  // EINMAL nach Connect: MQTT/NTP/mDNS starten
+  if (!netStarted) {
+    netStarted = true;
 
-  wl_status_t st = WiFi.status();
-  if (st != lastWiFiStatus) {
-    lastWiFiStatus = st;
-    if (st != WL_CONNECTED) mdnsStarted = false;
+    // MQTT/NTP jetzt erst starten
+    mqttBegin(cfg);
+    ntpBegin(cfg);
+    
+    loggerLoop(cfg, liveData);
+
+    Serial.printf("WLAN verbunden: %s IP: %s\n",
+                  WiFi.SSID().c_str(),
+                  WiFi.localIP().toString().c_str());
   }
 
+  // mDNS nur einmal, wenn wirklich connected
   if (!mdnsStarted) {
-    String host = WiFi.getHostname(); // oder dein gHost
-    if (MDNS.begin(host.c_str())) {
+    if (MDNS.begin(gHost.c_str())) {
       MDNS.addService("http", "tcp", 80);
-      Serial.println("mDNS aktiv: http://" + host + ".local/");
       mdnsStarted = true;
-    } else {
-      Serial.println("mDNS Start fehlgeschlagen");
+      Serial.println("mDNS aktiv: http://" + gHost + ".local/");
     }
   }
 
-  // NTP/UDP wie früher
+  // Netzwerk-Loops
+  mqttLoop(cfg);
   ntpLoop();
 
+  // UDP/MQTT Publish nur wenn connected
   if (millis() - lastSend >= cfg.send_interval_ms) {
     lastSend = millis();
-    SendUDP(cfg, liveData);
-      // MQTT publish
+
+    if (cfg.udp_enabled) SendUDP(cfg, liveData);
+
     mqttPublish(cfg, "temperature", String(liveData.temperature_c, 1));
     mqttPublish(cfg, "humidity",    String(liveData.humidity_rh, 1));
     mqttPublish(cfg, "pressure",    String(liveData.pressure_hpa, 1));
-    mqttPublish(cfg, "co2",         String((int)liveData.co2_ppm));
+    mqttPublish(cfg, "co2",         String((int)lroundf(liveData.co2_ppm)));
+
     lastSendMs = millis();
   }
-
 }

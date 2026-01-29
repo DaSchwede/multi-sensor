@@ -397,10 +397,10 @@ button, .btn{
   font-weight: 600;
 }
 
-/* Aktivzustand für Dropdown (wenn currentPath unter /settings/... ist) */
+/* Aktivzustand für Dropdown (wenn currentPath unter /settings/... oder /info/... ist) */
 .navdrop.active > .navdrop-btn{
-  /* gleiche Optik wie dein .menubar a.active */
-  /* falls du schon .active definierst, kann das leer bleiben */
+  background: rgba(255,255,255,.20);
+  opacity: 1;
 }
 
 /* ===== Toggle Switch ===== */
@@ -522,4 +522,17 @@ button, .btn{
 @keyframes iconSpin{
   from{ transform: rotate(0deg); }
   to  { transform: rotate(360deg); }
+}
+
+/* Logger (Diagrammseite) */
+.logger-canvas{
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: block;
+}
+
+.logger-err{
+  margin-top: 8px;
 }

@@ -167,6 +167,10 @@ static void haPublishConfig(const AppConfig &cfg,
 }
 
 static void mqttPublishHADiscovery(const AppConfig &cfg) {
+    bool sentAny = false;
+    static bool discoverySent = false;
+    if (discoverySent) return;
+
   if (!cfg.mqtt_enabled) return;
   if (!cfg.mqtt_ha_discovery) return;
   if (!mqtt.connected()) return;
@@ -188,6 +192,7 @@ static void mqttPublishHADiscovery(const AppConfig &cfg) {
 
   auto common = [&](JsonDocument &doc, const String &name, const String &uniq){
     doc["name"] = name;
+    doc["object_id"] = uniq;
     doc["unique_id"] = uniq;
     doc["availability_topic"] = avail;
     doc["payload_available"] = cfg.mqtt_lwt_online;
@@ -206,7 +211,7 @@ static void mqttPublishHADiscovery(const AppConfig &cfg) {
     doc["unit_of_measurement"] = "°C";
     doc["device_class"] = "temperature";
     doc["state_class"] = "measurement";
-    haPublishConfig(cfg, "sensor", devId + "_temperature", doc);
+    haPublishConfig(cfg, "sensor", devId + "_temperature", doc); sentAny = true;
   }
 
   // Luftfeuchte
@@ -217,7 +222,7 @@ static void mqttPublishHADiscovery(const AppConfig &cfg) {
     doc["unit_of_measurement"] = "%";
     doc["device_class"] = "humidity";
     doc["state_class"] = "measurement";
-    haPublishConfig(cfg, "sensor", devId + "_humidity", doc);
+    haPublishConfig(cfg, "sensor", devId + "_humidity", doc); sentAny = true;
   }
 
   // Luftdruck
@@ -228,7 +233,7 @@ static void mqttPublishHADiscovery(const AppConfig &cfg) {
     doc["unit_of_measurement"] = "hPa";
     doc["device_class"] = "pressure";
     doc["state_class"] = "measurement";
-    haPublishConfig(cfg, "sensor", devId + "_pressure", doc);
+    haPublishConfig(cfg, "sensor", devId + "_pressure", doc); sentAny = true;
   }
 
   // CO2
@@ -239,6 +244,7 @@ static void mqttPublishHADiscovery(const AppConfig &cfg) {
     doc["unit_of_measurement"] = "ppm";
     doc["device_class"] = "carbon_dioxide";
     doc["state_class"] = "measurement";
-    haPublishConfig(cfg, "sensor", devId + "_co2", doc);
+    haPublishConfig(cfg, "sensor", devId + "_co2", doc); sentAny = true;
   }
+  if (sentAny) discoverySent = true;
 }

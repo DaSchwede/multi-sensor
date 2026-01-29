@@ -2,38 +2,44 @@
 #include <WiFi.h>
 #include <Preferences.h>
 
-static bool reqStartPortal = false;
-static bool reqForget = false;
-
-static uint32_t wifiUiUntilMs = 0;  // Zeitfenster, in dem /wifi erlaubt ist
-static bool reqStartPortalKeepSta = false;
-
 static Preferences prefs;
-static WebServer *srv = nullptr;
+static WebServer* srv = nullptr;
 
-static bool portalActive = false;
-static String apSsid;
+// ===== Config =====
+static constexpr uint32_t BOOT_GRACE_MS     = 15000;  // nach Boot erstmal Ruhe geben
+static constexpr uint32_t RETRY_INTERVAL_MS = 10000;  // Reconnect alle 10s
+static constexpr uint8_t  MAX_FAILS         = 3;      // <- deine Vorgabe
 
+// ===== State =====
 static String storedSSID;
 static String storedPass;
 
-// Reconnect-Logik
-static uint32_t lastReconnectAttemptMs = 0;
-static uint8_t reconnectFails = 0;
+static bool   portalActive = false;
+static String apSsid;
+
+static uint32_t bootMs = 0;
+static uint32_t lastTryMs = 0;
+static uint8_t  fails = 0;
+
+// UI-Window (closed by default)
+static uint32_t wifiUiUntilMs = 0;
+
+// Deferred actions (aus HTTP-Handlern / Settings)
+static bool reqForget = false;
+static bool reqStartPortalKeepSta = false;
 
 // ---------- Helpers ----------
 static String htmlEscape(const String &s) {
-  String o;
-  o.reserve(s.length() + 8);
-  for (size_t i = 0; i < s.length(); i++) {
-    char c = s[i];
-    switch (c) {
-      case '&': o += F("&amp;"); break;
-      case '<': o += F("&lt;"); break;
-      case '>': o += F("&gt;"); break;
-      case '"': o += F("&quot;"); break;
-      case '\'': o += F("&#39;"); break;
-      default: o += c; break;
+  String o; o.reserve(s.length() + 8);
+  for (size_t i=0;i<s.length();i++){
+    char c=s[i];
+    switch(c){
+      case '&': o+=F("&amp;"); break;
+      case '<': o+=F("&lt;"); break;
+      case '>': o+=F("&gt;"); break;
+      case '"': o+=F("&quot;"); break;
+      case '\'': o+=F("&#39;"); break;
+      default: o+=c; break;
     }
   }
   return o;
@@ -53,31 +59,71 @@ static bool wifiUiAllowed() {
   return portalActive || (storedSSID.length() == 0) || (millis() < wifiUiUntilMs);
 }
 
-static void startPortal();
-static void stopPortal();
-static void tryStaConnect();
+static void startApOnlyPortal() {
+  // AP-only = iPhone freundlicher, stabilere Beacons
+  apSsid = apSsid.length() ? apSsid : makeApName("Multi-Sensor");
 
-// ---------- HTTP Handlers ----------
-static void handleRoot() {
-  // Im Portal-Modus immer auf /wifi umleiten
-  if (portalActive) {
-    srv->sendHeader("Location", "/wifi", true);
-    srv->send(302, "text/plain", "Redirect");
-    return;
-  }
-  srv->send(200, "text/plain", "OK");
+  WiFi.setSleep(false);
+  WiFi.disconnect(true, true);
+  delay(100);
+
+  WiFi.mode(WIFI_AP);
+  delay(50);
+
+  IPAddress ip(192,168,4,1), gw(192,168,4,1), sn(255,255,255,0);
+  WiFi.softAPConfig(ip, gw, sn);
+
+  bool ok = WiFi.softAP(apSsid.c_str(), nullptr, 1); // offen, Kanal 1 (iPhone-safe)
+  delay(100);
+
+  portalActive = ok;
+  Serial.printf("softAP(AP-only,'%s') ok=%d AP-IP=%s mode=%d\n",
+                apSsid.c_str(), ok?1:0, WiFi.softAPIP().toString().c_str(), (int)WiFi.getMode());
 }
 
+static void startApKeepStaPortal() {
+  apSsid = apSsid.length() ? apSsid : makeApName("Multi-Sensor");
+
+  WiFi.setSleep(false);
+  WiFi.mode(WIFI_AP_STA);
+  delay(50);
+
+  IPAddress ip(192,168,4,1), gw(192,168,4,1), sn(255,255,255,0);
+  WiFi.softAPConfig(ip, gw, sn);
+
+  bool ok = WiFi.softAP(apSsid.c_str(), nullptr, 1);
+  delay(100);
+
+  portalActive = ok;
+  Serial.printf("softAP(AP+STA,'%s') ok=%d AP-IP=%s mode=%d\n",
+                apSsid.c_str(), ok?1:0, WiFi.softAPIP().toString().c_str(), (int)WiFi.getMode());
+}
+
+static void stopPortal() {
+  if (!portalActive) return;
+  WiFi.softAPdisconnect(true);
+  portalActive = false;
+}
+
+static void staBegin() {
+  if (storedSSID.length() == 0) return;
+
+  // wichtig: STA-Init „clean“
+  WiFi.setSleep(false);
+  WiFi.mode(portalActive ? WIFI_AP_STA : WIFI_STA);
+  WiFi.begin(storedSSID.c_str(), storedPass.c_str());
+  Serial.println(String("STA begin -> ") + storedSSID);
+}
+
+// ---------- HTTP ----------
 static void handleWifiPage() {
-  // im Normalbetrieb sperren
   if (!wifiUiAllowed()) {
-  srv->send(403, "text/plain", "Forbidden");
-  return;
+    srv->send(403, "text/plain", "Forbidden");
+    return;
   }
 
-
   String html;
-  html.reserve(4500);
+  html.reserve(6500);
 
   html += "<!doctype html><html><head><meta charset='utf-8'>";
   html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
@@ -86,69 +132,63 @@ static void handleWifiPage() {
   html += "<title>Multi Sensors - WLAN Setup</title>";
   html += "</head><body>";
 
-  // Topbar + Logo (wie bei dir)
   html += "<div class='topbar'><img src='/logo_name_weiss.svg' alt='Multi Sensors' class='logo'></div>";
-
-  // Minimal-Menü (kein Login nötig im Portal)
   html += "<div class='menubar'>";
   html += "<a class='active' href='/wifi'>WLAN Setup</a>";
   html += "</div>";
-
   html += "<div class='content'>";
 
-  // Card: Setup
+  // Setup card
   html += "<div class='card'><h2>WLAN Setup</h2>";
-  html += "<p class='small'>Wähle ein WLAN aus und speichere das Passwort. Der Setup-AP schließt nach erfolgreicher Verbindung automatisch.</p>";
+  html += "<p class='small'>Wähle ein WLAN aus, gib das Passwort ein und speichere. Sobald verbunden, kannst du zur Startseite wechseln.</p>";
+
   html += "<div class='actions'>";
   html += "<button class='btn-primary' type='button' onclick='scan()'>WLAN scannen</button>";
   html += "</div>";
+
   html += "<div id='msg' class='small mt-12'></div>";
-  html += "<div id='list' class='mt-12'></div>";
+
+  // Connect form (hidden until SSID chosen)
+  html += "<div id='conn' class='mt-12' style='display:none;'>";
+  html += "  <div class='card'><h2>Verbinden</h2>";
+  html += "    <div class='form-row'><label>SSID</label>"
+          "      <input id='ssid' readonly></div>";
+  html += "    <div class='form-row'><label>Passwort</label>"
+          "      <input id='pass' type='password' placeholder='Passwort (leer lassen für offen)'></div>";
+  html += "    <div class='actions'>"
+          "      <button class='btn-primary' type='button' onclick='saveConnect()'>Speichern & Verbinden</button>"
+          "      <button class='btn-secondary' type='button' onclick='cancelConn()'>Abbrechen</button>"
+          "    </div>";
+  html += "  </div>";
   html += "</div>";
 
-  // Card: Status (mit deiner .tbl)
+  // Networks list
+  html += "<div id='list' class='mt-12'></div>";
+
+  // Status card
   html += "<div class='card'><h2>Status</h2><table class='tbl'>";
   html += "<tr><th>Setup-AP</th><td>" + htmlEscape(apSsid) + "</td></tr>";
   html += "<tr><th>Setup-IP</th><td>192.168.4.1</td></tr>";
-  html += "</table></div>";
+  html += "<tr><th>Verbunden</th><td id='st_conn'>—</td></tr>";
+  html += "<tr><th>SSID</th><td id='st_ssid'>—</td></tr>";
+  html += "<tr><th>IP</th><td id='st_ip'>—</td></tr>";
+  html += "</table>";
 
+  // Go buttons (shown when connected)
+  html += "<div id='go' class='actions' style='display:none'>";
+  html += "<a id='go_ip' class='btn btn-secondary' href='/'>Startseite (IP)</a>";
+  html += "<a id='go_mdns' class='btn btn-secondary' href='/'>Startseite (mDNS)</a>";
+  html += "</div>";
+
+  html += "</div>"; // status card
   html += "</div>"; // content
 
-  // JS: Netzwerke als Tabelle in .tbl
+  // JS
   html += R"JS(
 <script>
-async function scan(){
-  const msg  = document.getElementById('msg');
-  const list = document.getElementById('list');
-  msg.textContent = 'Scanne...';
-  list.innerHTML = '';
-
-  const r = await fetch('/api/wifi/scan');
-  const j = await r.json();
-
-  msg.textContent = 'Gefunden: ' + j.length;
-
-  if(!j.length){
-    list.innerHTML = '<div class="card"><p class="small">Keine Netzwerke gefunden.</p></div>';
-    return;
-  }
-
-  let h = '<div class="card"><h2>Netzwerke</h2><table class="tbl">';
-  h += '<tr><th>SSID</th><th>RSSI</th><th>Aktion</th></tr>';
-
-  j.forEach(n=>{
-    const ssidEsc = (n.ssid || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    const ssidJs  = (n.ssid || '').replace(/'/g,"\\'");
-    h += `<tr>
-      <td><b>${ssidEsc}</b></td>
-      <td>${n.rssi} dBm</td>
-      <td><button class="btn-primary" type="button" onclick="connectTo('${ssidJs}')">Verbinden</button></td>
-    </tr>`;
-  });
-
-  h += '</table></div>';
-  list.innerHTML = h;
-}
+let gSelected = null;
+let pollTimer = null;
+window._afterSave = false;   // <-- wichtig: default KEIN redirect
 
 async function connectTo(ssid){
   const msg = document.getElementById('msg');
@@ -166,75 +206,149 @@ async function connectTo(ssid){
     body
   });
   msg.textContent = await r.text();
+
+  // ab jetzt darf redirect passieren
+  window._afterSave = true;
+
+  if(!pollTimer){
+    pollTimer = setInterval(pollStatus, 1200);
+  }
 }
+
+async function pollStatus(){
+  const r = await fetch('/api/wifi/status', { cache:'no-store' });
+  const s = await r.json();
+
+  // Buttons updaten (optional)
+  const goIp   = document.getElementById('go_ip');
+  const goMdns = document.getElementById('go_mdns');
+  const goWrap = document.getElementById('go');
+
+  if(goWrap) goWrap.style.display = (s.connected ? 'flex' : 'none');
+  if(goIp && s.ip) goIp.href = 'http://' + s.ip + '/';
+  if(goMdns) goMdns.href = 'http://' + (s.host || 'multi-sensor') + '.local/';
+
+  // ✅ Redirect NUR wenn wir wirklich gerade gespeichert haben
+  if(window._afterSave && s.connected && s.ip && s.ip !== '0.0.0.0'){
+    clearInterval(pollTimer); pollTimer = null;
+    window._afterSave = false;
+    setTimeout(()=>{ window.location.href = 'http://' + s.ip + '/'; }, 700);
+  }
+}
+async function scan(){
+  const msg  = document.getElementById('msg');
+  const list = document.getElementById('list');
+  msg.textContent = 'Scanne...';
+  list.innerHTML = '';
+
+  try {
+    const r = await fetch('/api/wifi/scan', { cache:'no-store' });
+
+    // wenn Server z.B. HTML/Redirect liefert, sieht man es hier
+    const ct = (r.headers.get('content-type') || '').toLowerCase();
+    if(!r.ok){
+      const t = await r.text();
+      msg.textContent = `Scan fehlgeschlagen (${r.status}): ${t.substring(0,120)}`;
+      return;
+    }
+    if(!ct.includes('application/json')){
+      const t = await r.text();
+      msg.textContent = `Scan: unerwartete Antwort (${ct}): ${t.substring(0,120)}`;
+      return;
+    }
+
+    const j = await r.json();
+    msg.textContent = 'Gefunden: ' + j.length;
+
+    if(!j.length){
+      list.innerHTML = '<div class="card"><p class="small">Keine Netzwerke gefunden.</p></div>';
+      return;
+    }
+
+    let h = '<div class="card"><h2>Netzwerke</h2><table class="tbl">';
+    h += '<tr><th>SSID</th><th>RSSI</th><th>Aktion</th></tr>';
+
+    j.forEach(n=>{
+      const ssidEsc = (n.ssid || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      const ssidJs  = (n.ssid || '').replace(/'/g,"\\'");
+      h += `<tr>
+        <td><b>${ssidEsc}</b></td>
+        <td>${n.rssi} dBm</td>
+        <td><button class="btn-primary" type="button" onclick="connectTo('${ssidJs}')">Verbinden</button></td>
+      </tr>`;
+    });
+
+    h += '</table></div>';
+    list.innerHTML = h;
+
+  } catch(e){
+    msg.textContent = 'JS Fehler beim Scan: ' + (e && e.message ? e.message : e);
+  }
+}
+
+
+pollStatus();
+setInterval(pollStatus, 3000);
 </script>
 )JS";
 
   html += "</body></html>";
-
   srv->send(200, "text/html; charset=utf-8", html);
 }
+//)JS";
 
 static void handleScan() {
+  // fürs Scannen brauchen wir STA kurz aktiv
+  wifi_mode_t m = WiFi.getMode();
+  bool needSta = (m == WIFI_MODE_AP);
+
+  if (needSta) { WiFi.mode(WIFI_AP_STA); delay(50); }
+
   int n = WiFi.scanNetworks(false, true);
 
-  // SSID -> best RSSI (simple dedupe)
   struct Item { String ssid; int rssi; };
-  Item best[25];
-  int m = 0;
+  Item best[25]; int mcnt = 0;
 
-  for (int i = 0; i < n && m < 25; i++) {
+  for (int i=0;i<n && mcnt<25;i++){
     String s = WiFi.SSID(i);
     int r = WiFi.RSSI(i);
+    if (!s.length()) continue;
 
-    if (s.length() == 0) continue;
-
-    int found = -1;
-    for (int k = 0; k < m; k++) {
-      if (best[k].ssid == s) { found = k; break; }
-    }
-
-    if (found >= 0) {
-      if (r > best[found].rssi) best[found].rssi = r; // besser = weniger negativ
-    } else {
-      best[m++] = { s, r };
-    }
+    int found=-1;
+    for(int k=0;k<mcnt;k++) if(best[k].ssid==s){found=k;break;}
+    if(found>=0){ if(r>best[found].rssi) best[found].rssi=r; }
+    else { best[mcnt++] = {s,r}; }
   }
 
-  // JSON
-  String json = "[";
-  for (int i = 0; i < m; i++) {
-    if (i) json += ",";
-    json += "{\"ssid\":\"" + htmlEscape(best[i].ssid) + "\",\"rssi\":" + String(best[i].rssi) + "}";
+  String json="[";
+  for(int i=0;i<mcnt;i++){
+    if(i) json+=",";
+    json += "{\"ssid\":\""+htmlEscape(best[i].ssid)+"\",\"rssi\":"+String(best[i].rssi)+"}";
   }
-  json += "]";
-  srv->send(200, "application/json", json);
+  json+="]";
+  srv->send(200,"application/json",json);
 
   WiFi.scanDelete();
+  if (needSta) { WiFi.mode(WIFI_AP); delay(50); }
 }
-
 
 static void handleSave() {
   String ssid = srv->arg("ssid");
   String pass = srv->arg("pass");
-
-  if (ssid.length() == 0) {
-    srv->send(400, "text/plain", "SSID fehlt");
-    return;
-  }
+  if (!ssid.length()) { srv->send(400,"text/plain","SSID fehlt"); return; }
 
   prefs.putString("ssid", ssid);
   prefs.putString("pass", pass);
-
   storedSSID = ssid;
   storedPass = pass;
 
-  srv->send(200, "text/plain", "Gespeichert. Verbinde... (AP schliesst bei Erfolg)");
-  reconnectFails = 0;
-  lastReconnectAttemptMs = 0;
+  fails = 0;
+  lastTryMs = millis();
 
-  // Wechsel zu STA (AP bleibt kurz, bis verbunden -> dann stopPortal)
-  tryStaConnect();
+  // sofort versuchen
+  staBegin();
+
+  srv->send(200,"text/plain","Gespeichert. Verbinde... (AP schließt bei Erfolg)");
 }
 
 static void handleStatus() {
@@ -243,178 +357,127 @@ static void handleStatus() {
   json += ",\"connected\":" + String(WiFi.status() == WL_CONNECTED ? "true" : "false");
   json += ",\"ssid\":\"" + htmlEscape(WiFi.SSID()) + "\"";
   json += ",\"ip\":\"" + WiFi.localIP().toString() + "\"";
+  json += ",\"host\":\"" + htmlEscape(String(WiFi.getHostname())) + "\"";
   json += "}";
   srv->send(200, "application/json", json);
 }
 
-// ---------- Core WiFi ----------
-static void tryStaConnect() {
-  if (storedSSID.length() == 0) return;
-
-  // AP + STA erlaubt Scans/Portal weiterhin, bis wirklich connected
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.begin(storedSSID.c_str(), storedPass.c_str());
-  Serial.println("STA begin -> " + storedSSID);
-
-}
-
-static void startPortal() {
-  if (portalActive) return;
-
-  // AP Name
-  apSsid = apSsid.length() ? apSsid : makeApName("Multi-Sensor");
-  WiFi.mode(WIFI_AP_STA); // wichtig: Scan + AP + später STA connect möglich
-  WiFi.softAP(apSsid.c_str(), nullptr, 1); // Kanal 1
-
-  portalActive = true;
-
-  Serial.println("WiFi Setup AP gestartet: " + apSsid);
-  Serial.println("IP: 192.168.4.1");
-}
-
-static void stopPortal() {
-  if (!portalActive) return;
-  WiFi.softAPdisconnect(true);
-  portalActive = false;
-}
-
 static void handleNotFound() {
   if (portalActive) {
-    // Alles auf das Setup leiten (Captive Portal Verhalten)
-    srv->sendHeader("Location", "/wifi", true);
-    srv->send(302, "text/plain", "Redirect");
+    srv->sendHeader("Location","/wifi",true);
+    srv->send(302,"text/plain","Redirect");
     return;
   }
-
-  // Normalbetrieb: echte 404
-  String msg = "Not found: ";
-  msg += srv->uri();
-  srv->send(404, "text/plain", msg);
+  srv->send(404,"text/plain", String("Not found: ") + srv->uri());
 }
 
+// ---------- Public API ----------
 void wifiMgrBegin(WebServer &server, const String &apNamePrefix) {
   srv = &server;
-
   prefs.begin("wifi", false);
+
   storedSSID = prefs.getString("ssid", "");
   storedPass = prefs.getString("pass", "");
 
   apSsid = makeApName(apNamePrefix);
 
-  // Routen IMMER registrieren (ein Server, kein Port-Konflikt!)
-  //srv->on("/", handleRoot);
   srv->on("/wifi", handleWifiPage);
-  srv->on("/api/wifi/scan", handleScan);
+  srv->on("/api/wifi/scan", HTTP_GET, handleScan);
   srv->on("/api/wifi/save", HTTP_POST, handleSave);
   srv->on("/api/wifi/status", handleStatus);
-
   srv->onNotFound(handleNotFound);
 
-  // Start: wenn Daten da -> STA versuchen, sonst Portal
+  bootMs = millis();
+  lastTryMs = 0;
+  fails = 0;
+
   if (storedSSID.length() > 0) {
     WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(true);
+    WiFi.persistent(false);
+    WiFi.setSleep(false);
+    WiFi.disconnect(true, true);
+    delay(100);
     WiFi.begin(storedSSID.c_str(), storedPass.c_str());
+    Serial.println("Boot STA begin -> " + storedSSID);
   } else {
-    startPortal();
+    startApOnlyPortal();
   }
 }
 
 void wifiMgrLoop() {
-  // Deferred actions (nie im HTTP-Handler WiFi umschalten)
-if (reqForget) {
-  reqForget = false;
-  prefs.clear();
-  storedSSID = "";
-  storedPass = "";
-  WiFi.disconnect(true);
-  startPortal();
-}
+  // Deferred actions
+  if (reqForget) {
+    reqForget = false;
+    prefs.clear();
+    storedSSID = "";
+    storedPass = "";
+    fails = 0;
+    lastTryMs = 0;
+    stopPortal();
+    startApOnlyPortal();
+    return;
+  }
 
-if (reqStartPortalKeepSta) {
-  reqStartPortalKeepSta = false;
-  // STA behalten, AP zuschalten
-  WiFi.mode(WIFI_AP_STA);
-  startPortal();          // startPortal setzt portalActive + softAP
-}
+  if (reqStartPortalKeepSta) {
+    reqStartPortalKeepSta = false;
+    // /wifi window soll i.d.R. schon vorher gesetzt sein (Settings)
+    startApKeepStaPortal();
+    return;
+  }
 
-if (reqStartPortal) {
-  reqStartPortal = false;
-  WiFi.disconnect(true);
-  startPortal();
-}
-
-  // Wenn verbunden -> Portal aus
+  // Connected -> Portal aus
   if (WiFi.status() == WL_CONNECTED) {
-    reconnectFails = 0;
+    fails = 0;
     if (portalActive) stopPortal();
     return;
   }
 
-  // Nicht verbunden:
-  // Wenn noch kein Portal aktiv ist -> reconnect Versuche, dann Portal
-  if (!portalActive) {
-    uint32_t now = millis();
-    if (now - lastReconnectAttemptMs >= 5000) {
-      lastReconnectAttemptMs = now;
-      reconnectFails++;
-
-      if (storedSSID.length() > 0) {
-        Serial.println("WLAN getrennt, reconnect Versuch " + String(reconnectFails));
-        WiFi.disconnect();
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(storedSSID.c_str(), storedPass.c_str());
-      }
-
-      if (reconnectFails >= 5) {
-        Serial.println("Reconnect fehlgeschlagen -> Setup AP aktivieren");
-        startPortal();
-      }
-    }
+  // Kein Creds -> Portal
+  if (storedSSID.length() == 0) {
+    if (!portalActive) startApOnlyPortal();
+    return;
   }
+
+  // Boot-Grace (damit der erste Versuch nicht kaputt getaktet wird)
+  if (!portalActive && (millis() - bootMs) < BOOT_GRACE_MS) {
+    return;
+  }
+
+  // Reconnect-Takt
+  const uint32_t now = millis();
+  if (now - lastTryMs < RETRY_INTERVAL_MS) return;
+  lastTryMs = now;
+
+  // Wenn Portal nicht aktiv -> zählen wir Fehlschläge und öffnen nach 3 den AP
+  if (!portalActive) {
+    fails++;
+    Serial.println("WLAN getrennt, reconnect Versuch " + String(fails));
+    WiFi.reconnect();
+
+    if (fails >= MAX_FAILS) {
+      Serial.println("Reconnect fehlgeschlagen -> Setup AP aktivieren");
+      startApOnlyPortal();
+    }
+    return;
+  }
+
+  // Portal aktiv: trotzdem versuchen, wieder ins WLAN zu kommen (ohne Spam)
+  Serial.println("Portal aktiv -> STA retry zu " + storedSSID);
+  staBegin();
 }
 
-bool wifiMgrIsConnected() {
-  return WiFi.status() == WL_CONNECTED;
-}
-
-bool wifiMgrPortalActive() {
-  return portalActive;
-}
-
-void wifiMgrStartPortal() {
-  startPortal();
-}
-
-void wifiMgrForget() {
-  reqForget = true;
-  prefs.clear();
-  storedSSID = "";
-  storedPass = "";
-  WiFi.disconnect(true);
-  startPortal();
-}
-
-bool wifiMgrHasCredentials() {
-  return storedSSID.length() > 0;
-}
-
-String wifiMgrApSsid() {
-  return apSsid;
-}
-
-void wifiMgrStartPortalManual() {
-  reqStartPortal = true;
-  WiFi.disconnect(true);
-  startPortal();
-}
-
-void wifiMgrRequestStartPortalManual() { reqStartPortal = true; }
-void wifiMgrRequestForget() { reqForget = true; }
+bool wifiMgrIsConnected() { return WiFi.status() == WL_CONNECTED; }
+bool wifiMgrPortalActive() { return portalActive; }
+bool wifiMgrHasCredentials() { return storedSSID.length() > 0; }
+String wifiMgrApSsid() { return apSsid; }
 
 void wifiMgrRequestWifiUi(uint32_t seconds) {
-  wifiUiUntilMs = millis() + (seconds * 1000UL);
+  wifiUiUntilMs = millis() + seconds * 1000UL;
 }
-
 void wifiMgrRequestStartPortalKeepSta() {
   reqStartPortalKeepSta = true;
+}
+void wifiMgrRequestForget() {
+  reqForget = true;
 }

@@ -2,12 +2,15 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <NTPClient.h>
+#include <sys/time.h>
 
 static WiFiUDP ntpUDP;
 static NTPClient ntp(ntpUDP);
 
 static bool started = false;
 static bool valid = false;
+
+static uint32_t nextTryMs = 0;
 
 static bool isLeap(int y) {
   return ((y % 4 == 0) && (y % 100 != 0)) || (y % 400 == 0);
@@ -142,12 +145,29 @@ void ntpBegin(const AppConfig &cfg) {
 void ntpLoop() {
   if (!started) return;
   if (WiFi.status() != WL_CONNECTED) return;
+  if (WiFi.localIP() == IPAddress(0,0,0,0)) return;
+  if (WiFi.gatewayIP() == IPAddress(0,0,0,0)) return;
+
+  uint32_t now = millis();
+  if (now < nextTryMs) return;
 
   if (!valid) {
-    if (ntp.forceUpdate()) valid = true;
+  if (ntp.forceUpdate()) {
+    valid = true;
+
+    // ✅ Systemzeit setzen (UTC)
+    timeval tv;
+    tv.tv_sec = (time_t)ntp.getEpochTime();
+    tv.tv_usec = 0;
+    settimeofday(&tv, nullptr);
+
+    nextTryMs = now + 60 * 1000UL;
   } else {
-    ntp.update();
+    nextTryMs = now + 10 * 1000UL;
   }
+} else {
+  ntp.update();
+}
 }
 
 bool ntpIsValid() {

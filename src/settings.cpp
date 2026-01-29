@@ -13,8 +13,7 @@ String defaultAdminHash() {
 }
 
 bool settingsBegin() {
-  if (!LittleFS.begin()) return false;
-  return true;
+   return true;
 }
 
 bool loadConfig(AppConfig &cfg) {
@@ -37,6 +36,11 @@ bool loadConfig(AppConfig &cfg) {
   if (cfg.mqtt_lwt_qos > 1) cfg.mqtt_lwt_qos = 1;
 
   // ----- ab hier doc benutzen -----
+  cfg.log_enabled      = doc["log_enabled"] | cfg.log_enabled;
+  cfg.log_interval_min = doc["log_interval_min"] | cfg.log_interval_min;
+  cfg.log_metric_mask  = doc["log_metric_mask"] | cfg.log_metric_mask;
+
+  cfg.log_retention_days = doc["log_retention_days"] | cfg.log_retention_days;
 
   cfg.ui_root_order = doc["ui_root_order"] | cfg.ui_root_order;
   cfg.ui_info_order = doc["ui_info_order"] | cfg.ui_info_order;
@@ -106,6 +110,13 @@ bool loadConfig(AppConfig &cfg) {
 
 bool saveConfig(const AppConfig &cfg) {
   DynamicJsonDocument doc(12288);
+
+  doc["log_enabled"]      = cfg.log_enabled;
+  doc["log_interval_min"] = cfg.log_interval_min;
+  doc["log_metric_mask"]  = cfg.log_metric_mask;
+
+  doc["log_retention_days"] = cfg.log_retention_days;
+
   doc["ui_root_order"] = cfg.ui_root_order;
   doc["ui_info_order"] = cfg.ui_info_order;  
   doc["ui_info_hide"]  = cfg.ui_info_hide;
