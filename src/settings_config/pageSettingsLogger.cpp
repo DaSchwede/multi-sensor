@@ -36,6 +36,14 @@ void pageSettingsLogger(WebServer &server) {
   String msg = "";
 
   if (server.method() == HTTP_POST) {
+    const bool wantRescan = server.hasArg("sd_rescan");
+
+  if (wantRescan) {
+    // hier: SD refresh / remount / infos neu lesen
+    // z.B. loggerRescan(); (bauen wir gleich)
+    msg = "SD aktualisiert.";
+  } else {
+    // normales Speichern
     cfg->log_enabled = server.hasArg("log_enabled");
 
     if (server.hasArg("log_interval_min")) {
@@ -66,6 +74,7 @@ void pageSettingsLogger(WebServer &server) {
       loggerForceOnce(*cfg, *live);
     }
   }
+  }
 
   const bool aTemp  = live ? isAvailFloat(live->temperature_c) : true;
   const bool aHum   = live ? isAvailFloat(live->humidity_rh)   : true;
@@ -83,7 +92,7 @@ void pageSettingsLogger(WebServer &server) {
   String html = pagesHeaderAuth("Einstellungen – Logger", "/settings/logger");
   settingsSendOkBadge(html, msg);
 
-  html += "<form method='POST'>";
+  html += "<form method='POST' action='/settings/logger'>";
 
   // Card: Grundsätzlich
   html += "<div class='card'><h2>Logger</h2>";
@@ -129,9 +138,7 @@ void pageSettingsLogger(WebServer &server) {
   } else {
     html += "<div class='hint'>SD: Gesamt <b>" + fmtGB(sd.total) + "</b>, Belegt <b>" + fmtGB(sd.used) +
             "</b> (" + String(usedPct) + "%), Frei <b>" + fmtGB(sd.free) + "</b>, Log-Tage <b>" + String(logDays) + "</b></div>";
-    html += "<form method='POST' action='/action/logger_rescan' style='margin-top:10px;'>"
-        "<button class='btn-secondary' type='submit'>SD aktualisieren</button>"
-        "</form>";
+    html += "<button class='btn-secondary' type='submit' name='sd_rescan' value='1'>SD aktualisieren</button>";
   }
 
   html += "</div>";

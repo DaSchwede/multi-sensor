@@ -26,6 +26,23 @@ static bool timeIsValid() {
   return (now > 1672531200);
 }
 
+static time_t localMidnight(time_t t) {
+  struct tm tmLocal{};
+  localtime_r(&t, &tmLocal);
+  tmLocal.tm_hour = 0;
+  tmLocal.tm_min  = 0;
+  tmLocal.tm_sec  = 0;
+  return mktime(&tmLocal); // lokale Mitternacht
+}
+
+static time_t startOfTodayLocal() {
+  time_t now = time(nullptr);
+  struct tm t{};
+  localtime_r(&now, &t);
+  t.tm_hour = 0; t.tm_min = 0; t.tm_sec = 0;
+  return mktime(&t); // local 00:00
+}
+
 static bool looksLikeHeader(const String& line){
   return line.startsWith("epoch");
 }
@@ -194,13 +211,33 @@ void apiHistory(WebServer &server) {
   if (range == "24h") {
     // Labels/Datensätze auf Rohpunkte (max ~48)
     // Wir lesen heute + gestern und filtern nach now-24h
-    time_t tMin = now - 24*3600;
+    String range = server.hasArg("range") ? server.arg("range") : "24h";
+    String chart = server.hasArg("chart") ? server.arg("chart") : "line";
+    doc["mode"] = (chart == "bar") ? "bar" : "line";
+
+    time_t now = time(nullptr);
+    time_t tMin = startOfTodayLocal();
+
+    if (range == "today") {
+      tMin = localMidnight(now);            // 00:00 heute
+    } else if (range == "12h") {
+      tMin = now - 12 * 3600;
+    } else if (range == "1h") {
+      tMin = now - 1 * 3600;
+    } else {
+  // default rolling 24h
+    tMin = now - 24 * 3600;
+    range = "24h";
+    }
+
 
     String d0 = dayStringLocalFromEpoch(now);
-    String d1 = dayStringLocalFromEpoch(now - 24*3600);
-
     String p0 = logPathForDay(d0);
-    String p1 = logPathForDay(d1);
+    
+
+    //String d1 = dayStringLocalFromEpoch(now - 24*3600);
+    //String p1 = logPathForDay(d1);
+
 
     // Für 24h wollen wir EIN gemeinsames labels-array (Zeitpunkte)
     // => wir lesen pro Datei einmal und sammeln labels; pro metric parallel.
@@ -300,22 +337,27 @@ void apiHistory(WebServer &server) {
     f.close();
   };
 
-        // series arrays anlegen
-    String metricKeys[8];
-JsonArray seriesArrs[8];
-int metricCount = 0;
+  // series arrays anlegen (wie du es unten schon hast)
+  String metricKeys[8];
+  JsonArray seriesArrs[8];
+  int metricCount = 0;
 
-for (int i=0;i<mn;i++){
-  const String& key = metrics[i];
-  if (!metricToCol(key)) continue; // nur bekannte
+  for (int i=0;i<mn;i++){
+    const String& key = metrics[i];
+    if (!metricToCol(key)) continue;
+    metricKeys[metricCount] = key;
+    seriesArrs[metricCount] = series.createNestedArray(key);
+    metricCount++;
+  }
 
-  metricKeys[metricCount] = key;
-  seriesArrs[metricCount] = series.createNestedArray(key);
-  metricCount++;
-}
+// Lesen:
+  if (range == "today") {
+    read24hFile(p0, metricKeys, metricCount, labels, seriesArrs);
+  } else {
+    //read24hFile(p1, metricKeys, metricCount, labels, seriesArrs);
+    read24hFile(p0, metricKeys, metricCount, labels, seriesArrs);
+  }
 
-read24hFile(p1, metricKeys, metricCount, labels, seriesArrs);
-read24hFile(p0, metricKeys, metricCount, labels, seriesArrs);
 
   } else if (range == "7d") {
     // pro Tag 1 Punkt: Tages-AVG
