@@ -35,6 +35,8 @@ static uint32_t lastRead = 0;
 static uint32_t lastReadMs = 0;
 static uint32_t lastSendMs = 0;
 
+static uint32_t netStableSince = 0;
+
 static String makeShortId() {
   uint64_t mac = ESP.getEfuseMac();
   uint32_t low = (uint32_t)(mac & 0xFFFFFFFF);
@@ -80,7 +82,7 @@ void setup() {
   } else {
   Serial.printf("LittleFS OK total=%u used=%u\n", LittleFS.totalBytes(), LittleFS.usedBytes());
   Serial.println("style.css exists? " + String(LittleFS.exists("/style.css")));
-  }
+    }
 
   if (!settingsBegin()) {
     Serial.println("LittleFS init fehlgeschlagen!");
@@ -104,8 +106,6 @@ void setup() {
   // WiFi-Manager (registriert /wifi + /api/wifi/* auf dem Server)
   wifiMgrBegin(server, "Multi-Sensor");
 
-  //mqttBegin(cfg);
-  //  Serial.println("MQTT Client gestartet.");
 
   // I2C + Sensoren immer initialisieren (unabhängig vom WLAN)
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
@@ -115,22 +115,11 @@ void setup() {
   if (!bmeBegin()) Serial.println("BME280 nicht gefunden!");
   if (!scdBegin()) Serial.println("SCD40/41 nicht gefunden!");
 
-    // UDP senden
-  //if (cfg.udp_enabled && (millis() - lastSend >= cfg.send_interval_ms)) {
-  //  lastSend = millis();
-  //  SendUDP(cfg, liveData);
-  //  lastSendMs = millis();
-  //}
-
-  // Webserver starten (damit /wifi erreichbar ist!)
+   // Webserver starten (damit /wifi erreichbar ist!)
   webServerBegin(server, cfg, &liveData, &lastReadMs, &lastSendMs);
   Serial.println("Webserver gestartet (inkl. /wifi).");
-  
+
   loggerBegin(cfg);
-
-  //ntpBegin(cfg);
-  //Serial.println("App gestartet (Sensoren/NTP aktiv).");
-
   
 }
 
@@ -151,12 +140,15 @@ void loop() {
   }
 
   // Offline: Netzwerk-Subsysteme stoppen/auslassen
-  if (!wifiReallyConnected()) {
-  if (mdnsStarted) { MDNS.end(); mdnsStarted = false; }
-  netStarted = false;
-  // loggerLoop optional trotzdem, aber erst wenn time gültig -> lassen wir es weg
-  return;
+  if (wifiReallyConnected()) {
+  if (netStableSince == 0) netStableSince = millis();
+  } else {
+    netStableSince = 0;
+    return;
   }
+
+  // erst nach z.B. 5 Sekunden
+  if (millis() - netStableSince < 5000) return;
 
   // EINMAL nach Connect: MQTT/NTP/mDNS starten
   if (!netStarted) {

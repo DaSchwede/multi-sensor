@@ -29,10 +29,11 @@ void pageLogger(WebServer &server) {
   html += "<div class='hint'>Werte auswählen und Zeitraum ändern – Diagramm lädt automatisch.</div>";
 
   // Checkboxen (IDs = metric keys)
-  html += "<div class='pick-row'><label><input type='checkbox' class='m' value='temp' checked> Temperatur (°C)</label></div>";
-  html += "<div class='pick-row'><label><input type='checkbox' class='m' value='hum'  checked> Luftfeuchte (%)</label></div>";
-  html += "<div class='pick-row'><label><input type='checkbox' class='m' value='press' checked> Luftdruck (hPa)</label></div>";
-  html += "<div class='pick-row'><label><input type='checkbox' class='m' value='co2'  checked> CO₂ (ppm)</label></div>";
+  html += "<div class='pick-row'><label><span class='swatch temp'></span><input type='checkbox' class='m' value='temp' checked> Temperatur (°C)</label></div>";
+  html += "<div class='pick-row'><label><span class='swatch hum'></span><input type='checkbox' class='m' value='hum'  checked> Luftfeuchte (%)</label></div>";
+  html += "<div class='pick-row'><label><span class='swatch press'></span><input type='checkbox' class='m' value='press' checked> Luftdruck (hPa)</label></div>";
+  html += "<div class='pick-row'><label><span class='swatch co2'></span><input type='checkbox' class='m' value='co2'  checked> CO₂ (ppm)</label></div>";
+
 
   html += "<div class='hint warn logger-err' id='err' hidden></div>";
   html += "<canvas id='c' width='900' height='320' class='logger-canvas'></canvas>";

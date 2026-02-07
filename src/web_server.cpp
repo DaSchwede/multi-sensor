@@ -21,6 +21,7 @@ void webServerBegin(WebServer &server,
   server.serveStatic("/style.css", LittleFS, "/style.css");
   server.serveStatic("/script.js", LittleFS, "/script.js");
   server.serveStatic("/logger.js", LittleFS, "/logger.js");
+  server.serveStatic("/wifi.js", LittleFS, "/wifi.js");
   server.serveStatic("/favicon.svg", LittleFS, "/favicon.svg");
   server.serveStatic("/logo_name_weiss.svg", LittleFS, "/logo_name_weiss.svg");
   server.serveStatic("/logo_name_weiss_gruen.svg", LittleFS, "/logo_name_weiss_gruen.svg");

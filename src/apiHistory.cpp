@@ -21,6 +21,8 @@ static int  findColIndex(const String cols[], int n, const char* name);
 static bool looksLikeHeader(const String& line);
 static int  metricToIndexNoHeader(const String& metricKey);
 
+
+
 static bool timeIsValid() {
   time_t now = time(nullptr);
   return (now > 1672531200);
@@ -174,19 +176,18 @@ void apiHistory(WebServer &server) {
   AppConfig* cfg = settingsRequireCfgAndAuth(server);
   if (!cfg) return;
 
-    if (!loggerSdOk()) {
+  if (!loggerSdOk()) {
     server.send(503, "application/json", "{\"error\":\"sd_not_ready\"}");
     return;
   }
-
-
   if (!timeIsValid()) {
     server.send(409, "application/json", "{\"error\":\"time_not_set\"}");
     return;
   }
 
-  String range = server.hasArg("range") ? server.arg("range") : "24h";
-  String metricsArg = server.hasArg("metrics") ? server.arg("metrics") : "temp,hum,press,co2";
+  const String range = server.hasArg("range") ? server.arg("range") : "24h";
+  const String chart = server.hasArg("chart") ? server.arg("chart") : "line";
+  const String metricsArg = server.hasArg("metrics") ? server.arg("metrics") : "temp,hum,press,co2";
 
   // metrics split
   String metrics[8]; int mn=0;
@@ -202,224 +203,129 @@ void apiHistory(WebServer &server) {
   }
 
   DynamicJsonDocument doc(18000);
+  doc["mode"] = (chart == "bar") ? "bar" : "line";
   JsonArray labels = doc.createNestedArray("labels");
   JsonObject series = doc.createNestedObject("series");
-  doc["mode"] = "line";
 
   time_t now = time(nullptr);
 
-  if (range == "24h") {
-    // Labels/Datensätze auf Rohpunkte (max ~48)
-    // Wir lesen heute + gestern und filtern nach now-24h
-    String range = server.hasArg("range") ? server.arg("range") : "24h";
-    String chart = server.hasArg("chart") ? server.arg("chart") : "line";
-    doc["mode"] = (chart == "bar") ? "bar" : "line";
+  // ===== feste Zeitfenster (kein rolling über Tage) =====
+  time_t tMin = 0;
 
-    time_t now = time(nullptr);
-    time_t tMin = startOfTodayLocal();
-
-    if (range == "today") {
-      tMin = localMidnight(now);            // 00:00 heute
-    } else if (range == "12h") {
-      tMin = now - 12 * 3600;
-    } else if (range == "1h") {
-      tMin = now - 1 * 3600;
-    } else {
-  // default rolling 24h
-    tMin = now - 24 * 3600;
-    range = "24h";
-    }
-
-
-    String d0 = dayStringLocalFromEpoch(now);
-    String p0 = logPathForDay(d0);
-    
-
-    //String d1 = dayStringLocalFromEpoch(now - 24*3600);
-    //String p1 = logPathForDay(d1);
-
-
-    // Für 24h wollen wir EIN gemeinsames labels-array (Zeitpunkte)
-    // => wir lesen pro Datei einmal und sammeln labels; pro metric parallel.
-    // Einfacher Ansatz: wir bauen zuerst eine temporäre Liste von epochs/labels und pro metric Werte.
-    // Für geringe Punktzahl ok: wir lesen je metric separat (simpel).
-
-    // Labels entstehen beim ersten Metric-Lauf (damit alle gleich lang sind).
-    // Danach müssen die anderen Serien exakt gleich viele Werte bekommen.
-    // => Wir lesen einmal die "Master"-Metric (erste gültige), und bei anderen metrics lesen wir mit gleicher Filterung,
-    // aber das wäre aufwändiger.
-    //
-    // Pragmatik: Wir liefern pro metric eigene Datenlänge? -> schlecht fürs Chart.
-    //
-    // Daher: Wir nehmen als Master den epoch aus CSV und füllen pro Zeile alle metrics in einem Pass.
-    // => implementieren wir jetzt direkt.
-
-    auto read24hFile = [&](const String& path,
-                       const String metricKeys[], int metricCount,
-                       JsonArray labelsArr, JsonArray seriesArrs[])->void {
-
-  if (!SD.exists(path)) return;
-  File f = SD.open(path, FILE_READ);
-  if (!f) return;
-
-  String first = f.readStringUntil('\n');
-  first.trim();
-  if (!first.length()) { f.close(); return; }
-
-  const int MAXC = 16;
-  String cols[MAXC]; int n=0;
-  String parts[MAXC]; int pn=0;
-
-  bool hasHeader = looksLikeHeader(first);
-
-  int idxEpoch = 0;
-  int idx[8];
-  for (int i=0;i<metricCount;i++) idx[i] = -1;
-
-  if (hasHeader) {
-    splitCsv(first, cols, MAXC, n);
-    idxEpoch = findColIndex(cols, n, COL_EPOCH);
-    if (idxEpoch < 0) { f.close(); return; }
-
-    for (int i=0;i<metricCount;i++) {
-      const char* col = metricToCol(metricKeys[i]);
-      idx[i] = col ? findColIndex(cols, n, col) : -1;
-    }
+  if (range == "1h") {
+    struct tm t{};
+    localtime_r(&now, &t);
+    t.tm_min = 0;
+    t.tm_sec = 0;
+    tMin = mktime(&t);
+  } else if (range == "12h") {
+    tMin = now - 12 * 3600;
+  } else if (range == "24h" || range == "today") {
+    tMin = startOfTodayLocal(); // 00:00 lokal
+  } else if (range == "7d" || range == "month") {
+    // TODO: deinen bestehenden Tagesmittel-Code hier wieder einsetzen
+    server.send(400, "application/json", "{\"error\":\"not_implemented_in_this_block\"}");
+    return;
   } else {
-    // kein Header → feste Positionen
-    idxEpoch = 0;
-    for (int i=0;i<metricCount;i++) idx[i] = metricToIndexNoHeader(metricKeys[i]);
-
-    // first ist Datenzeile -> mitverarbeiten
-    splitCsv(first, parts, MAXC, pn);
-    if (pn > idxEpoch) {
-      time_t ep = (time_t)parts[idxEpoch].toInt();
-      if (ep >= tMin) {
-        struct tm tmLocal{};
-        localtime_r(&ep, &tmLocal);
-        char lb[6];
-        snprintf(lb, sizeof(lb), "%02d:%02d", tmLocal.tm_hour, tmLocal.tm_min);
-        labelsArr.add(String(lb));
-
-        for (int i=0;i<metricCount;i++) {
-          float v;
-          if (idx[i] >= 0 && pn > idx[i] && parseFloatField(parts[idx[i]], v)) seriesArrs[i].add(v);
-          else seriesArrs[i].add(nullptr);
-        }
-      }
-    }
+    server.send(400, "application/json", "{\"error\":\"bad_range\"}");
+    return;
   }
 
-  while (f.available()) {
-    String line = f.readStringUntil('\n');
-    line.trim();
-    if (!line.length()) continue;
-
-    splitCsv(line, parts, MAXC, pn);
-    if (pn <= idxEpoch) continue;
-
-    time_t ep = (time_t)parts[idxEpoch].toInt();
-    if (ep < tMin) continue;
-
-    struct tm tmLocal{};
-    localtime_r(&ep, &tmLocal);
-    char lb[6];
-    snprintf(lb, sizeof(lb), "%02d:%02d", tmLocal.tm_hour, tmLocal.tm_min);
-    labelsArr.add(String(lb));
-
-    for (int i=0;i<metricCount;i++) {
-      float v;
-      if (idx[i] >= 0 && pn > idx[i] && parseFloatField(parts[idx[i]], v)) seriesArrs[i].add(v);
-      else seriesArrs[i].add(nullptr);
-    }
-  }
-
-    f.close();
-  };
-
-  // series arrays anlegen (wie du es unten schon hast)
+  // ===== series arrays anlegen =====
   String metricKeys[8];
   JsonArray seriesArrs[8];
   int metricCount = 0;
 
   for (int i=0;i<mn;i++){
     const String& key = metrics[i];
-    if (!metricToCol(key)) continue;
+    if (!metricToCol(key)) continue; // nur bekannte
     metricKeys[metricCount] = key;
     seriesArrs[metricCount] = series.createNestedArray(key);
     metricCount++;
   }
 
-// Lesen:
-  if (range == "today") {
-    read24hFile(p0, metricKeys, metricCount, labels, seriesArrs);
-  } else {
-    //read24hFile(p1, metricKeys, metricCount, labels, seriesArrs);
-    read24hFile(p0, metricKeys, metricCount, labels, seriesArrs);
-  }
+  // ===== Datei: nur heute =====
+  const String day = dayStringLocalFromEpoch(now);
+  const String path = logPathForDay(day);
 
+  // ===== Datei lesen (header oder no-header) =====
+  auto readFile = [&](const String& p)->void {
+    if (!SD.exists(p)) return;
+    File f = SD.open(p, FILE_READ);
+    if (!f) return;
 
-  } else if (range == "7d") {
-    // pro Tag 1 Punkt: Tages-AVG
-    for (int di=6; di>=0; di--) {
-      time_t t = now - (time_t)di * 86400;
-      String day = dayStringLocalFromEpoch(t);
-      String path = logPathForDay(day);
+    String first = f.readStringUntil('\n');
+    first.trim();
+    if (!first.length()) { f.close(); return; }
 
-      labels.add(day);
+    const int MAXC=16;
+    String cols[MAXC]; int n=0;
+    String parts[MAXC]; int pn=0;
 
-      for (int i=0;i<mn;i++){
-        const String& key = metrics[i];
-        const char* col = metricToCol(key);
-        if (!col) continue;
+    bool hasHeader = looksLikeHeader(first);
 
-        if (!series.containsKey(key)) series.createNestedArray(key);
-        JsonArray arr = series[key].as<JsonArray>();
+    int idxEpoch = 0;
+    int idx[8];
+    for(int i=0;i<metricCount;i++) idx[i] = -1;
 
-        double sum=0; uint32_t cnt=0;
-        calcDailyAvg(path, key, sum, cnt);
-        if (cnt == 0) arr.add(nullptr);
-        else arr.add((float)(sum / (double)cnt));
+    if (hasHeader) {
+      splitCsv(first, cols, MAXC, n);
+      idxEpoch = findColIndex(cols, n, COL_EPOCH);
+      if (idxEpoch < 0) { f.close(); return; }
+
+      for(int i=0;i<metricCount;i++){
+        const char* col = metricToCol(metricKeys[i]);
+        idx[i] = col ? findColIndex(cols, n, col) : -1;
+      }
+    } else {
+      // kein header → feste positionen
+      idxEpoch = 0;
+      for(int i=0;i<metricCount;i++) idx[i] = metricToIndexNoHeader(metricKeys[i]);
+
+      // first ist daten → mitverarbeiten
+      splitCsv(first, parts, MAXC, pn);
+      if (pn > idxEpoch) {
+        time_t ep = (time_t)parts[idxEpoch].toInt();
+        if (ep >= tMin) {
+          struct tm tl{}; localtime_r(&ep, &tl);
+          char lb[6]; snprintf(lb, sizeof(lb), "%02d:%02d", tl.tm_hour, tl.tm_min);
+          labels.add(String(lb));
+
+          for(int i=0;i<metricCount;i++){
+            float v;
+            if (idx[i] >= 0 && pn > idx[i] && parseFloatField(parts[idx[i]], v)) seriesArrs[i].add(v);
+            else seriesArrs[i].add(nullptr);
+          }
+        }
       }
     }
 
-  } else if (range == "month") {
-    // aktueller Monat: Tages-AVG für jeden Tag vom 1. bis heute
-    String curMonth = monthStringLocalFromEpoch(now);
-    doc["mode"] = "bar";
+    while (f.available()) {
+      String line = f.readStringUntil('\n');
+      line.trim();
+      if (!line.length()) continue;
 
+      splitCsv(line, parts, MAXC, pn);
+      if (pn <= idxEpoch) continue;
 
-    struct tm tmNow{};
-    localtime_r(&now, &tmNow);
+      time_t ep = (time_t)parts[idxEpoch].toInt();
+      if (ep < tMin) continue;
 
-    int days = tmNow.tm_mday; // 1..heute
-    for (int d=1; d<=days; d++) {
-      char dayBuf[16];
-      snprintf(dayBuf, sizeof(dayBuf), "%s-%02d", curMonth.c_str(), d);
-      String day(dayBuf);
-      String path = logPathForDay(day);
+      struct tm tl{}; localtime_r(&ep, &tl);
+      char lb[6]; snprintf(lb, sizeof(lb), "%02d:%02d", tl.tm_hour, tl.tm_min);
+      labels.add(String(lb));
 
-      labels.add(day);
-
-      for (int i=0;i<mn;i++){
-        const String& key = metrics[i];
-        const char* col = metricToCol(key);
-        if (!col) continue;
-
-        if (!series.containsKey(key)) series.createNestedArray(key);
-        JsonArray arr = series[key].as<JsonArray>();
-
-        double sum=0; uint32_t cnt=0;
-        calcDailyAvg(path, col, sum, cnt);
-        if (cnt == 0) arr.add(nullptr);
-        else arr.add((float)(sum / (double)cnt));
+      for(int i=0;i<metricCount;i++){
+        float v;
+        if (idx[i] >= 0 && pn > idx[i] && parseFloatField(parts[idx[i]], v)) seriesArrs[i].add(v);
+        else seriesArrs[i].add(nullptr);
       }
     }
 
-  } else {
-    server.send(400, "application/json", "{\"error\":\"bad_range\"}");
-    return;
-  }
+    f.close();
+  };
+
+  readFile(path);
 
   String out;
   serializeJson(doc, out);

@@ -7,6 +7,11 @@
 
 static WiFiUDP udp;
 
+static bool dnsLocked = false;
+
+static uint32_t wifiStableSinceMs = 0;
+static constexpr uint32_t UDP_NET_STABLE_MS = 8000; // 8 Sekunden
+
 // Bitmasken (müssen zu deiner Settings-Seite passen)
 static constexpr uint32_t UF_TEMP  = (1u << 0);
 static constexpr uint32_t UF_HUM   = (1u << 1);
@@ -78,11 +83,17 @@ static bool resolveTarget(const String& hostOrIp, IPAddress &out) {
   lastResolveMs = now;
 
   IPAddress resolved;
-  if (WiFi.hostByName(hostOrIp.c_str(), resolved)) {
+  if (!dnsLocked && WiFi.hostByName(hostOrIp.c_str(), resolved)) {
     cachedHost = hostOrIp;
     cachedIp = resolved;
     out = resolved;
     return true;
+  }
+
+  // nach erstem Lock: NUR IP benutzen
+  if (cachedIp != IPAddress()) {
+   out = cachedIp;
+   return true;
   }
 
   return false;
@@ -95,8 +106,26 @@ void SendUDP(const AppConfig& cfg, const SensorData& d) {
   // 2) Wenn nichts ausgewählt -> absichtlich nichts senden
   if (cfg.udp_fields_mask == 0) return;
 
-  // 3) WLAN muss stehen
-  if (WiFi.status() != WL_CONNECTED) return;
+  // 3) WLAN muss wirklich stabil stehen
+  if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0,0,0,0)) {
+    wifiStableSinceMs = 0;
+    return;
+  }
+
+  if (wifiStableSinceMs == 0) {
+    wifiStableSinceMs = millis();
+    return; // noch warten
+  }
+
+  if (millis() - wifiStableSinceMs < UDP_NET_STABLE_MS) {
+    return; // noch nicht stabil genug
+  }
+
+  // DNS nur EINMAL nach stabilem Connect erlauben
+  if (!dnsLocked) {
+    dnsLocked = true;
+    lastResolveMs = 0; // erzwingt 1x resolve
+  }
 
   // Timestamp
   unsigned long ts = ntpEpochUtc();
@@ -117,6 +146,12 @@ void SendUDP(const AppConfig& cfg, const SensorData& d) {
   const String payload = (cfg.udp_format == 1)
     ? udpPayloadJson(cfg, d, ts)
     : udpPayloadCsv(cfg, d, ts);
+
+  if (payload.length() < 10) return; // Sicherheitsgurt
+
+  static uint32_t lastUdpMs = 0;
+  if (millis() - lastUdpMs < 1000) return; // max 1 UDP/s
+  lastUdpMs = millis();
 
   // Senden
   udp.beginPacket(target, cfg.server_udp_port);

@@ -536,3 +536,15 @@ button, .btn{
 .logger-err{
   margin-top: 8px;
 }
+
+.swatch{
+  display:inline-block;
+  width:10px;height:10px;
+  border-radius:3px;
+  margin-right:8px;
+  vertical-align:middle;
+}
+.swatch.temp  { background:#1f77b4; }
+.swatch.hum   { background:#2ca02c; }
+.swatch.press { background:#ff7f0e; }
+.swatch.co2   { background:#d62728; }
