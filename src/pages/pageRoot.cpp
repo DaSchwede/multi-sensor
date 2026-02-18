@@ -110,7 +110,12 @@ setInterval(refreshLive, 5000);
 void pageRoot(WebServer &server) {
   AppConfig* cfg = pagesCfg();
   if (!cfg) { server.send(500, "text/plain", "cfg missing"); return; }
-  if (!requireAuth(server, *cfg)) return;
+  if (!requireAuth(server, *cfg)) {
+  // Falls requireAuth keinen Redirect/Response geschickt hat, schicken wir einen.
+  server.sendHeader("Location", "/login", true);
+  server.send(302, "text/plain", "");
+  return;
+ }
 
   String html = pagesHeaderAuth("Startseite", "/");
 

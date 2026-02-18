@@ -2,8 +2,8 @@
 #include <WebServer.h>
 #include <WiFi.h>
 
-#include "pages.h"
 #include "wifi_mgr.h"
+#include "pages.h"
 #include "settings_config/settings_common.h"
 
 static String wifiStatusStr(wl_status_t s) {
@@ -25,56 +25,82 @@ void pageSettingsWifi(WebServer &server) {
 
   String msg = "";
 
-  // Actions (POST)
-  if (server.method() == HTTP_POST) {
-    if (server.hasArg("action")) {
-      String a = server.arg("action");
+  // -----------------------------
+  // POST Actions
+  // -----------------------------
+  if (server.method() == HTTP_POST && server.hasArg("action")) {
+    const String a = server.arg("action");
 
-      if (a == "start_portal") {
-        wifiMgrRequestWifiUi(300);          // 5 Minuten /wifi erlauben
-        wifiMgrRequestStartPortalKeepSta(); // Portal starten, STA bleibt verbunden
-
-        server.sendHeader("Location", "/wifi", true);
-        server.send(302, "text/plain", "");
+    if (a == "open_portal") {
+      // Portal aktivieren, STA darf parallel verbunden bleiben
+      wifiMgrRequestStartPortalKeepSta();
+      wifiMgrRequestWifiUi(600); // 10 Minuten /wifi auch im Heimnetz erlauben
+      msg = "Setup-Portal aktiviert. Im Setup-WLAN oder ueber /wifi (10 Min) konfigurieren.";
+      server.sendHeader("Location", "/wifi", true);
+      server.send(302, "text/plain", "");
       return;
 
-      } else if (a == "forget_wifi") {
-        wifiMgrRequestWifiUi(300);
-        wifiMgrRequestForget();
-        server.sendHeader("Location", "/wifi", true);
-        server.send(302, "text/plain", "");
-        return;
-      }
+    }
+
+    if (a == "forget_wifi") {
+      wifiMgrRequestForget();
+      msg = "WLAN-Daten geloescht. Setup-Portal gestartet.";
+      
+
+    }
+
+    if (a == "allow_wifi_ui") {
+      wifiMgrRequestWifiUi(600); // 10 Minuten
+      msg = "WLAN-Setup-Seite (/wifi) fuer 10 Minuten freigeschaltet.";
+      server.sendHeader("Location", "/wifi", true);
+      server.send(302, "text/plain", "");
+      return;
+
     }
   }
 
-  // Statusdaten
-  const bool connected   = (WiFi.status() == WL_CONNECTED);
-  const bool portal      = wifiMgrPortalActive();
-  const bool hasCreds    = wifiMgrHasCredentials();
-  const String staSsid   = WiFi.SSID();
-  const String staIp     = WiFi.localIP().toString();
-  const int rssi         = WiFi.RSSI();
-  const String apSsid    = wifiMgrApSsid();
+  const wl_status_t st = WiFi.status();
+  const bool connected = (st == WL_CONNECTED);
 
   String html = pagesHeaderAuth("Einstellungen – WLAN", "/settings/wifi");
   settingsSendOkBadge(html, msg);
 
+  // -----------------------------
+  // Status
+  // -----------------------------
   html += "<div class='card'><h2>Status</h2><table class='tbl'>";
-  html += "<tr><th>Verbunden</th><td>" + String(WiFi.status() == WL_CONNECTED ? "Ja" : "Nein") + "</td></tr>";
+  html += "<tr><th>Status</th><td>" + wifiStatusStr(st) + "</td></tr>";
   html += "<tr><th>SSID</th><td>" + (WiFi.SSID().length() ? WiFi.SSID() : String("-")) + "</td></tr>";
-  html += "<tr><th>IP</th><td>" + (WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : String("-")) + "</td></tr>";
-  html += "<tr><th>RSSI</th><td>" + (WiFi.status() == WL_CONNECTED ? String(WiFi.RSSI()) + " dBm" : String("-")) + "</td></tr>";
-  html += "<tr><th>Portal aktiv</th><td>" + String(wifiMgrPortalActive() ? "Ja" : "Nein") + "</td></tr>";
-  html += "<tr><th>Setup-AP</th><td>" + wifiMgrApSsid() + "</td></tr>";
+  html += "<tr><th>IP (STA)</th><td>" + (connected ? WiFi.localIP().toString() : String("-")) + "</td></tr>";
+  html += "<tr><th>RSSI</th><td>" + (connected ? String(WiFi.RSSI()) + " dBm" : String("-")) + "</td></tr>";
+  html += "<tr><th>Setup-Portal</th><td>" + String(wifiMgrPortalActive() ? "aktiv" : "aus") + "</td></tr>";
+
+  if (wifiMgrPortalActive()) {
+    html += "<tr><th>Setup-SSID</th><td>" + wifiMgrApSsid() + "</td></tr>";
+    html += "<tr><th>Setup-Passwort</th><td>" + wifiMgrApPass() + "</td></tr>";
+    html += "<tr><th>Setup-IP (AP)</th><td>" + WiFi.softAPIP().toString() + "</td></tr>";
+  }
   html += "</table></div>";
 
+  // -----------------------------
+  // Aktionen
+  // -----------------------------
   html += "<form method='POST'>";
-  html += "<div class='card'><h2>Aktionen</h2><div class='actions'>";
-  html += "<button class='btn-primary' type='submit' name='action' value='start_portal'>WLAN aendern</button>";
+
+  html += "<div class='card'><h2>Aktionen</h2>";
+  html += "<div class='hint'>"
+          "WLAN-Konfiguration erfolgt ueber das Setup-Portal (<code>/wifi</code>). "
+          "Im Portal-Modus wird ein eigenes Setup-WLAN aktiviert."
+          "</div>";
+
+  html += "<div class='actions'>";
+  html += "<button class='btn-primary' type='submit' name='action' value='open_portal'>WLAN neu einrichten</button>";
+  html += "<button class='btn-primary' type='submit' name='action' value='allow_wifi_ui'>/wifi im Heimnetz oeffnen</button>";
   html += "<button class='btn-danger' type='submit' name='action' value='forget_wifi' "
           "onclick=\"return confirm('WLAN-Daten wirklich loeschen?');\">WLAN vergessen</button>";
-  html += "</div></div></form>";
+  html += "</div>";
+
+  html += "</div></form>";
 
   html += pagesFooter();
   server.send(200, "text/html; charset=utf-8", html);
