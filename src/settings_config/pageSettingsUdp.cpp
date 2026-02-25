@@ -37,7 +37,7 @@ void pageSettingsUdp(WebServer &server) {
     if (server.hasArg("server_udp_ip"))   cfg->server_udp_ip = server.arg("server_udp_ip");
     if (server.hasArg("server_udp_port")) cfg->server_udp_port = toIntSafe(server.arg("server_udp_port"), cfg->server_udp_port);
     if (server.hasArg("send_interval_ms")) cfg->send_interval_ms = (uint32_t)toIntSafe(server.arg("send_interval_ms"), (int)cfg->send_interval_ms);
-    if (server.hasArg("sensor_id"))       cfg->sensor_id = server.arg("sensor_id");
+    if (server.hasArg("udp_sensor_id"))       cfg->udp_sensor_id = server.arg("udp_sensor_id");
 
     uint32_t mask = 0;
     if (server.hasArg("f_temp"))  mask |= UF_TEMP;
@@ -78,7 +78,7 @@ void pageSettingsUdp(WebServer &server) {
   html += "<div class='form-row'><label>Sendeintervall (ms)</label>"
           "<input name='send_interval_ms' type='number' value='" + String(cfg->send_interval_ms) + "'></div>";
   html += "<div class='form-row'><label>Sensor ID</label>"
-          "<input name='sensor_id' value='" + cfg->sensor_id + "'></div>";
+          "<input name='udp_sensor_id' value='" + cfg->udp_sensor_id + "'></div>";
 
   html += "</div>";
 

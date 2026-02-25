@@ -35,7 +35,10 @@ struct AppConfig {
   String server_udp_ip = "192.168.1.10";
   uint16_t server_udp_port = 7000;
   uint32_t send_interval_ms = 5000;
-  String sensor_id = "Sensor-<chipid>";
+  String udp_sensor_id = "Sensor-<chipid>";
+
+  // MQTT / HA Geräte-ID (für Topics + Discovery). Wenn leer -> mqtt_client_id / device_name / ChipID
+  String mqtt_device_id = "";
 
   // MQTT
   bool   mqtt_enabled        = false;
@@ -79,13 +82,24 @@ struct AppConfig {
   bool license_require_accept = true;
 
   // UI-Reihenfolge (kommasepariert)
-  String ui_root_order = "live,network,time";
-  String ui_info_order = "system,network,sensor,memory,time,settings";
+  String ui_root_order = "live,network";
+  String ui_info_order = "system,network,sensor,memory,time,settings,mqtt";
   String ui_info_hide  = "";
-  String ui_home_order = "live,network,time";
+  String ui_home_order = "live,network";
   String ui_home_hide  = "";
 };
 
+static inline String effectiveDeviceId(const AppConfig& cfg) {
+  String id = cfg.mqtt_device_id; id.trim();
+  if (!id.length()) { id = cfg.mqtt_client_id; id.trim(); }
+  if (!id.length()) { id = cfg.device_name; id.trim(); }
+  if (!id.length()) { id = cfg.udp_sensor_id; id.trim(); }
+  if (!id.length()) {
+    uint32_t chip = (uint32_t)(ESP.getEfuseMac() & 0xFFFFFFFF);
+    id = "MultiSensor-" + String(chip, HEX);
+  }
+  return id;
+}
 
 // String defaultAdminHash();
 bool settingsBegin();

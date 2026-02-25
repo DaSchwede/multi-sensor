@@ -10,6 +10,10 @@ static NTPClient ntp(ntpUDP);
 static bool started = false;
 static bool valid = false;
 
+static unsigned long lastSyncUtc = 0;
+static uint32_t lastAttempt = 0;
+static String serverName = "";
+
 static uint32_t nextTryMs = 0;
 
 static bool isLeap(int y) {
@@ -136,10 +140,14 @@ int ntpLocalOffsetSeconds(const AppConfig &cfg, unsigned long utcEpoch) {
 
 void ntpBegin(const AppConfig &cfg) {
   ntp.end();
+  serverName = cfg.ntp_server;
   ntp = NTPClient(ntpUDP, cfg.ntp_server.c_str(), 0, 60 * 1000); // UTC!
   ntp.begin();
   started = true;
   valid = false;
+  lastSyncUtc = 0;
+  lastAttempt = 0;
+  nextTryMs = 0;
 }
 
 void ntpLoop() {
@@ -151,23 +159,30 @@ void ntpLoop() {
   uint32_t now = millis();
   if (now < nextTryMs) return;
 
-  if (!valid) {
-  if (ntp.forceUpdate()) {
-    valid = true;
+    if (!valid) {
+    lastAttempt = now;
 
-    // ✅ Systemzeit setzen (UTC)
-    timeval tv;
-    tv.tv_sec = (time_t)ntp.getEpochTime();
-    tv.tv_usec = 0;
-    settimeofday(&tv, nullptr);
+    if (ntp.forceUpdate()) {
+      valid = true;
 
-    nextTryMs = now + 60 * 1000UL;
+      // Systemzeit setzen (UTC)
+      timeval tv;
+      tv.tv_sec = (time_t)ntp.getEpochTime();
+      tv.tv_usec = 0;
+      settimeofday(&tv, nullptr);
+
+      lastSyncUtc = ntp.getEpochTime();
+      nextTryMs = now + 60 * 1000UL;
+    } else {
+      nextTryMs = now + 10 * 1000UL;
+    }
   } else {
-    nextTryMs = now + 10 * 1000UL;
+    // laufend aktuell halten
+    ntp.update();
+
+    // optional: wenn update() eine neue Zeit bringt, kannst du lastSyncUtc refreshen.
+    // Da NTPClient kein "didSync" liefert, lassen wir lastSyncUtc beim forceUpdate() stehen.
   }
-} else {
-  ntp.update();
-}
 }
 
 bool ntpIsValid() {
@@ -209,4 +224,43 @@ String ntpDateTimeString(const AppConfig &cfg) {
   unsigned long loc = ntpEpochLocal(cfg);
   if (loc == 0) return "—";
   return fmtDateTime(loc);
+}
+
+bool ntpStarted() { return started; }
+
+const char* ntpServer() {
+  return serverName.length() ? serverName.c_str() : "";
+}
+
+unsigned long ntpLastSyncUtc() {
+  return lastSyncUtc;
+}
+
+uint32_t ntpLastAttemptMs() {
+  return lastAttempt;
+}
+
+uint32_t ntpNextTryMs() {
+  return nextTryMs;
+}
+
+bool ntpSyncNow() {
+  if (!started) return false;
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (WiFi.localIP() == IPAddress(0,0,0,0)) return false;
+
+  lastAttempt = millis();
+
+  if (!ntp.forceUpdate()) return false;
+
+  valid = true;
+
+  timeval tv;
+  tv.tv_sec = (time_t)ntp.getEpochTime();
+  tv.tv_usec = 0;
+  settimeofday(&tv, nullptr);
+
+  lastSyncUtc = ntp.getEpochTime();
+  nextTryMs = millis() + 60 * 1000UL;
+  return true;
 }

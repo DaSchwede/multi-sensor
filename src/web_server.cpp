@@ -5,6 +5,8 @@
 #include "sensors_ctrl.h"
 #include "settings_config/settings_common.h"
 #include "logger.h"
+#include "ntp_time.h"
+#include "pageNTP.h"
 
 void webServerBegin(WebServer &server,
                     AppConfig &cfg,
@@ -65,6 +67,29 @@ void webServerBegin(WebServer &server,
   // API
   server.on("/api/live", HTTP_GET, [&](){ apiLive(server); });
   server.on("/api/history", HTTP_GET, [&](){ apiHistory(server); });
+  server.on("/api/time/status", HTTP_GET, [&](){
+  // keine Auth nötig (nur Anzeige), wenn du willst -> settingsRequireCfgAndAuth(server)
+  String local = (ntpIsValid() && pagesCfg()) ? ntpDateTimeString(*pagesCfg()) : String("—");
+
+  String json = "{";
+  json += "\"ntp_valid\":" + String(ntpIsValid() ? 1 : 0) + ",";
+  json += "\"epoch_utc\":" + String((unsigned long)ntpEpochUtc()) + ",";
+  json += "\"local\":\"" + local + "\"";
+  json += "}";
+
+  server.send(200, "application/json; charset=utf-8", json);
+  });
+
+  server.on("/api/time/sync", HTTP_POST, [&](){
+    AppConfig* c = settingsRequireCfgAndAuth(server);
+    if (!c) return;
+
+  // NTP „neu anstoßen“
+    ntpBegin(*c);
+
+    server.send(200, "application/json; charset=utf-8", "{\"ok\":1}");
+  });
+
 
   // Seiten
   server.on("/", HTTP_GET,        [&](){ pageRoot(server); });
@@ -85,6 +110,12 @@ void webServerBegin(WebServer &server,
 
   server.on("/settings/time",  HTTP_GET, [&](){ pageSettingsTime(server); });
   server.on("/settings/time",  HTTP_POST, [&](){ pageSettingsTime(server); });
+
+  server.on("/info/time", HTTP_GET,  [&](){ pageNTP(server); });
+  // server.on("/info/time", HTTP_POST, [&](){ pageNTP(server); }); // für "Sync"-Button
+
+  server.on("/settings/ntp", HTTP_GET,  [&](){ pageNTP(server); });
+  server.on("/settings/ntp", HTTP_POST, [&](){ pageNTP(server); });
   
   server.on("/settings/mqtt",  HTTP_GET, [&](){ pageSettingsMqtt(server); });
   server.on("/settings/mqtt",  HTTP_POST, [&](){ pageSettingsMqtt(server); });

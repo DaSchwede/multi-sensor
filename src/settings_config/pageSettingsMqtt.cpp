@@ -2,6 +2,7 @@
 #include <WebServer.h>
 #include "pages.h"
 #include "settings_config/settings_common.h"
+#include "mqtt_client.h"
 
 // Hinweis: Diese Seite erwartet folgende Felder in AppConfig:
 //   bool   mqtt_enabled;
@@ -82,6 +83,10 @@ void pageSettingsMqtt(WebServer &server) {
       while (cfg->mqtt_topic_base.endsWith("/")) cfg->mqtt_topic_base.remove(cfg->mqtt_topic_base.length() - 1);
     }
 
+    if (server.hasArg("mqtt_device_id")) {
+      cfg->mqtt_device_id = trimCopy(server.arg("mqtt_device_id"));
+    }
+
     // LWT
     if (server.hasArg("mqtt_lwt_topic"))
     cfg->mqtt_lwt_topic = trimCopy(server.arg("mqtt_lwt_topic"));
@@ -116,7 +121,15 @@ void pageSettingsMqtt(WebServer &server) {
 
 
     saveConfig(*cfg);
-    msg = "Gespeichert.";
+
+    // Force: Discovery neu senden und MQTT neu starten
+    mqttResetDiscoverySent();
+    mqttBegin(*cfg);          // Server/TLS/Keepalive neu setzen
+   // optional: direkt connect versuchen (wenn WiFi da)
+   mqttEnsureConnected(*cfg);
+
+  msg = "Gespeichert. MQTT wird neu verbunden…";
+
   }
 
   String html = pagesHeaderAuth("Einstellungen – MQTT", "/settings/mqtt");
@@ -171,6 +184,8 @@ void pageSettingsMqtt(WebServer &server) {
           "<input name='mqtt_port' type='number' min='1' max='65535' value='" + String(cfg->mqtt_port) + "'></div>";
   html += "<div class='form-row'><label>Client ID</label>"
           "<input name='mqtt_client_id' placeholder='z.B. multi-sensor-01' value='" + cfg->mqtt_client_id + "'></div>";
+  html += "<div class='form-row'><label>MQTT Geräte-ID (Topics/Discovery)</label>"
+          "<input name='mqtt_device_id' placeholder='z.B. sensor_wohnzimmer' value='" + cfg->mqtt_device_id + "'></div>";
   html += "<div class='form-row'><label>Benutzer</label>"
           "<input name='mqtt_user' value='" + cfg->mqtt_user + "'></div>";
   html += "<div class='form-row'><label>Passwort</label>"

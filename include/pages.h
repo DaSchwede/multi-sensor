@@ -31,6 +31,7 @@ void pageSettingsLogger(WebServer &server);
 void pageSettingsUi(WebServer &server);
 void pageSettingsWifi(WebServer &server); 
 void pageSettingsTools(WebServer &server);
+void pageNTP(WebServer &server);
 
 // settings info
 void pageSystemInfo(WebServer &server);
@@ -59,6 +60,7 @@ String pagesHeaderPublic(WebServer &server, const String &title, const String &c
 String pagesFooter();
 
 String pagesUptimeString();
+String cardChangelog();
 String pagesLoadLicenseText();
 std::vector<String> pagesSplitCsv(const String &csv);
 
@@ -68,4 +70,6 @@ String cardNetzwerk();
 String cardSensor();
 String cardSpeicher();
 String cardZeit();
-String cardAktuelleEinstellungen();
+String cardUdpEinstellungen();
+String cardMqtt();
+

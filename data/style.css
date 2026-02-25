@@ -387,8 +387,16 @@ button, .btn{
   background: rgba(255,255,255,0.08);
 }
 
-.navdrop:hover .navdrop-menu{
+/* Click-to-open (Mobile-friendly) */
+.navdrop.open .navdrop-menu{
   display: block;
+}
+
+/* Optional: Hover nur auf Geräten mit Maus/Trackpad */
+@media (hover: hover) and (pointer: fine){
+  .navdrop:hover .navdrop-menu{
+    display: block;
+  }
 }
 
 /* Aktiver Punkt */
@@ -548,3 +556,17 @@ button, .btn{
 .swatch.hum   { background:#2ca02c; }
 .swatch.press { background:#ff7f0e; }
 .swatch.co2   { background:#d62728; }
+
+.changelog h3{
+  margin:16px 0 6px;
+  font-size:15px;
+}
+
+.changelog ul{
+  margin:0 0 10px 18px;
+  padding:0;
+}
+
+.changelog li{
+  margin:4px 0;
+}

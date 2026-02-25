@@ -58,7 +58,7 @@ static String cardFirmware() {
   h += "<tr><th>ESP-IDF</th><td>" + String(esp_get_idf_version()) + "</td></tr>";
   h += "<tr><th>Reset Reason</th><td>" + resetReasonStr(esp_reset_reason()) + "</td></tr>";
   if (cfg) {
-    h += "<tr><th>Sensor-ID</th><td>" + cfg->sensor_id + "</td></tr>";
+  h += "<tr><th>Sensor-ID</th><td>" + effectiveDeviceId(*cfg) + "</td></tr>";
   }
   h += "<tr><th>Betriebszeit</th><td>" + pagesUptimeString() + "</td></tr>";
   h += "</table></div>";

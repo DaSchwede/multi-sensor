@@ -4,6 +4,7 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include "settings.h"
 
 // Forward declarations (wichtig für C++)
 static String safeSensorId(const AppConfig &cfg);
@@ -17,12 +18,47 @@ static PubSubClient mqtt;
 static bool useTls = false;
 static unsigned long lastReconnect = 0;
 
+static bool discoverySent = false;
+void mqttResetDiscoverySent() { discoverySent = false; }
+
+int mqttState() { return mqtt.state(); }
+
+const char* mqttStateStr() {
+  switch (mqtt.state()) {
+    case MQTT_CONNECTED: return "CONNECTED";
+    case MQTT_CONNECT_FAILED: return "CONNECT_FAILED";
+    case MQTT_CONNECTION_TIMEOUT: return "TIMEOUT";
+    case MQTT_CONNECTION_LOST: return "CONNECTION_LOST";
+    case MQTT_CONNECT_UNAUTHORIZED: return "UNAUTHORIZED";
+    case MQTT_CONNECT_BAD_PROTOCOL: return "BAD_PROTOCOL";
+    case MQTT_CONNECT_BAD_CLIENT_ID: return "BAD_CLIENT_ID";
+    case MQTT_CONNECT_UNAVAILABLE: return "UNAVAILABLE";
+    case MQTT_CONNECT_BAD_CREDENTIALS: return "BAD_CREDENTIALS";
+    default: return "UNKNOWN";
+  }
+}
+
 static String safeSensorId(const AppConfig &cfg) {
-  String sid = cfg.sensor_id;
+  String sid = cfg.mqtt_device_id;
   sid.trim();
   sid.replace(" ", "_");
   sid.replace("/", "_");
-  if (sid.length() == 0) sid = "sensor";
+
+  if (sid.length() == 0) {
+    uint32_t chip = (uint32_t)(ESP.getEfuseMac() & 0xFFFFFFFF);
+
+    String hex = String(chip, HEX);
+    hex.toLowerCase();
+
+    // auf 8 Stellen auffüllen (falls führende Nullen fehlen)
+    while (hex.length() < 8) hex = "0" + hex;
+
+    // letzte 4 Zeichen nehmen
+    String short4 = hex.substring(hex.length() - 4);
+
+    sid = "MultiSensor-" + short4;
+  }
+
   return sid;
 }
 
@@ -35,7 +71,7 @@ static String haPrefix(const AppConfig &cfg) {
 
 static String baseTopic(const AppConfig &cfg) {
   // multisensor/<sensor_id>
-  return String("multisensor/") + safeSensorId(cfg);
+  return String("MultiSensor/") + safeSensorId(cfg);
 }
 
 static String availabilityTopic(const AppConfig &cfg) {
@@ -44,7 +80,7 @@ static String availabilityTopic(const AppConfig &cfg) {
 }
 
 static String willTopic(const AppConfig &cfg) {
-  return String("multisensor/") + safeSensorId(cfg) + "/status";
+  return String("MultiSensor/") + safeSensorId(cfg) + "/status";
 }
 
 void mqttBegin(const AppConfig &cfg) {
@@ -66,6 +102,7 @@ void mqttBegin(const AppConfig &cfg) {
 
   // Optional: Keepalive aus Config setzen (PubSubClient default 15s)
   mqtt.setKeepAlive(cfg.mqtt_keepalive);
+  mqtt.setBufferSize(1024);
 }
 
 void mqttLoop(const AppConfig &cfg) {
@@ -79,7 +116,7 @@ static bool mqttConnect(const AppConfig &cfg) {
   String cid = cfg.mqtt_client_id;
   cid.trim();
   if (cid.length() == 0) {
-    cid = "multi-sensor-" + safeSensorId(cfg);
+    cid = "MultiSensor-" + safeSensorId(cfg);
   }
 
   String wt = willTopic(cfg);
@@ -108,9 +145,14 @@ static bool mqttConnect(const AppConfig &cfg) {
   }
 
   if (ok) {
-    mqttPublishHADiscovery(cfg);
-  }
-  
+  Serial.printf("MQTT connected. HA discovery=%d retain=%d prefix='%s' mask=0x%08lx\n",
+    cfg.mqtt_ha_discovery ? 1 : 0,
+    cfg.mqtt_ha_retain ? 1 : 0,
+    cfg.mqtt_ha_prefix.c_str(),
+    (unsigned long)cfg.mqtt_pub_mask
+  );
+  mqttPublishHADiscovery(cfg);
+}
 
   return ok;
 }
@@ -144,7 +186,7 @@ bool mqttPublish(const AppConfig &cfg,
   if (!cfg.mqtt_enabled) return false;
   if (!mqtt.connected()) return false;
 
-  String topic = "multisensor/";
+  String topic = "MultiSensor/";
   topic += safeSensorId(cfg);
   topic += "/";
   topic += subtopic;
@@ -163,31 +205,38 @@ static void haPublishConfig(const AppConfig &cfg,
   serializeJson(doc, payload);
 
   // Discovery immer retain (oder per cfg steuerbar)
-  mqtt.publish(topic.c_str(), payload.c_str(), cfg.mqtt_ha_retain);
+  bool ok = mqtt.publish(topic.c_str(), payload.c_str(), cfg.mqtt_ha_retain);
+  if (!ok) {
+    Serial.printf("HA DISCOVERY publish FAILED (len=%u)\n", payload.length());
+  }
+
 }
 
 static void mqttPublishHADiscovery(const AppConfig &cfg) {
     bool sentAny = false;
-    static bool discoverySent = false;
-    if (discoverySent) return;
+  if (discoverySent) return; // bleibt ok, aber jetzt global + resetbar
 
   if (!cfg.mqtt_enabled) return;
   if (!cfg.mqtt_ha_discovery) return;
   if (!mqtt.connected()) return;
 
+  uint32_t mask = cfg.mqtt_pub_mask;
+  if (mask == 0) {
+    mask = MQTT_PUB_TEMP | MQTT_PUB_HUM | MQTT_PUB_PRESS | MQTT_PUB_CO2;
+  }
+
   const String sid = safeSensorId(cfg);
-  const String devId = "multisensor_" + sid;        // eindeutige Geräte-ID
+  const String devId = "MultiSensor_" + sid;        // eindeutige Geräte-ID
   const String base  = baseTopic(cfg);              // multisensor/<sid>
   const String avail = availabilityTopic(cfg);      // multisensor/<sid>/status
 
   // Gemeinsamer "device"-Block für alle Entitäten
   auto fillDevice = [&](JsonObject device){
-    device["identifiers"][0] = devId;
+    JsonArray ids = device["identifiers"].to<JsonArray>();
+    ids.add(devId);
     device["name"] = (cfg.device_name.length() ? cfg.device_name : sid);
-    device["manufacturer"] = "Multi-Sensor";
+    device["manufacturer"] = "MultiSensor";
     device["model"] = "ESP32-C3 SuperMini";
-    // optional, wenn du eine Version hast:
-    // device["sw_version"] = "1.0.0";
   };
 
   auto common = [&](JsonDocument &doc, const String &name, const String &uniq){
@@ -203,7 +252,7 @@ static void mqttPublishHADiscovery(const AppConfig &cfg) {
   };
 
   // Temperatur
-  if (cfg.mqtt_pub_mask & MQTT_PUB_TEMP) {
+  if (mask & MQTT_PUB_TEMP) {
     JsonDocument doc;
 
     common(doc, "Temperature", devId + "_temperature");
@@ -215,7 +264,7 @@ static void mqttPublishHADiscovery(const AppConfig &cfg) {
   }
 
   // Luftfeuchte
-  if (cfg.mqtt_pub_mask & MQTT_PUB_HUM) {
+  if (mask & MQTT_PUB_HUM) {
     JsonDocument doc;
     common(doc, "Humidity", devId + "_humidity");
     doc["state_topic"] = base + "/humidity";
@@ -226,7 +275,7 @@ static void mqttPublishHADiscovery(const AppConfig &cfg) {
   }
 
   // Luftdruck
-  if (cfg.mqtt_pub_mask & MQTT_PUB_PRESS) {
+  if (mask & MQTT_PUB_PRESS) {
     JsonDocument doc;
     common(doc, "Pressure", devId + "_pressure");
     doc["state_topic"] = base + "/pressure";
@@ -237,7 +286,7 @@ static void mqttPublishHADiscovery(const AppConfig &cfg) {
   }
 
   // CO2
-  if (cfg.mqtt_pub_mask & MQTT_PUB_CO2) {
+  if (mask & MQTT_PUB_CO2) {
     JsonDocument doc;
     common(doc, "CO₂", devId + "_co2");
     doc["state_topic"] = base + "/co2";

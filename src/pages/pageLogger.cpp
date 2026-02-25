@@ -9,6 +9,11 @@ void pageLogger(WebServer &server) {
 
   String html = pagesHeaderAuth("Logger – Verlauf", "/logger");
 
+  html += "<div style='display:flex; align-items:center; justify-content:space-between; gap:10px;'>";
+  html += "<h1 style='margin:0;'>Logger – Verlauf</h1>";
+  html += "<button class='icon-btn' type='button' title='Aktualisieren' onclick='location.reload()'>&#x21bb;</button>";
+  html += "</div>";
+
   html += "<div class='card'><h2>Verlauf</h2>";
 
   html += "<div class='form-row'><label>Zeitraum</label>"

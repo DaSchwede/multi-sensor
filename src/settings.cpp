@@ -53,7 +53,13 @@ bool loadConfig(AppConfig &cfg) {
   cfg.server_udp_ip = doc["server_udp_ip"] | cfg.server_udp_ip;
   cfg.server_udp_port = doc["server_udp_port"] | cfg.server_udp_port;
   cfg.send_interval_ms = doc["send_interval_ms"] | cfg.send_interval_ms;
-  cfg.sensor_id = doc["sensor_id"] | cfg.sensor_id;
+  // neu: korrektes Feld lesen
+  cfg.udp_sensor_id = doc["udp_sensor_id"] | cfg.udp_sensor_id;
+
+  // fallback für alte configs (Migration)
+  if (cfg.udp_sensor_id.length() == 0) {
+  cfg.udp_sensor_id = doc["sensor_id"] | cfg.udp_sensor_id;
+  }
 
   cfg.udp_enabled = doc["udp_enabled"] | cfg.udp_enabled;
 
@@ -80,24 +86,28 @@ bool loadConfig(AppConfig &cfg) {
   cfg.mqtt_port          = doc["mqtt_port"]          | cfg.mqtt_port;
   cfg.mqtt_user          = doc["mqtt_user"]          | cfg.mqtt_user;
   cfg.mqtt_pass          = doc["mqtt_pass"]          | cfg.mqtt_pass;
+  cfg.mqtt_device_id     = doc["mqtt_device_id"]     | cfg.mqtt_device_id;
+  if (cfg.mqtt_device_id.length() == 0) {
+  cfg.mqtt_device_id = cfg.device_name;
+  }
   cfg.mqtt_client_id     = doc["mqtt_client_id"]     | cfg.mqtt_client_id;
   cfg.mqtt_topic_base    = doc["mqtt_topic_base"]    | cfg.mqtt_topic_base;
   cfg.mqtt_retain        = doc["mqtt_retain"]        | cfg.mqtt_retain;
   cfg.mqtt_qos           = doc["mqtt_qos"]           | cfg.mqtt_qos;
   cfg.mqtt_keepalive     = doc["mqtt_keepalive"]     | cfg.mqtt_keepalive;
   cfg.mqtt_clean_session = doc["mqtt_clean_session"] | cfg.mqtt_clean_session;
-  cfg.mqtt_tls_enabled = doc["mqtt_tls_enabled"] | cfg.mqtt_tls_enabled;
-  cfg.mqtt_tls_ca      = doc["mqtt_tls_ca"]      | cfg.mqtt_tls_ca;
-  cfg.mqtt_lwt_enabled = doc["mqtt_lwt_enabled"] | cfg.mqtt_lwt_enabled;
-  cfg.mqtt_lwt_topic   = doc["mqtt_lwt_topic"]   | cfg.mqtt_lwt_topic;
-  cfg.mqtt_lwt_online  = doc["mqtt_lwt_online"]  | cfg.mqtt_lwt_online;
-  cfg.mqtt_lwt_offline = doc["mqtt_lwt_offline"] | cfg.mqtt_lwt_offline;
-  cfg.mqtt_lwt_retain  = doc["mqtt_lwt_retain"]  | cfg.mqtt_lwt_retain;
-  cfg.mqtt_lwt_qos     = doc["mqtt_lwt_qos"]     | cfg.mqtt_lwt_qos;
-  cfg.mqtt_pub_mask = doc["mqtt_pub_mask"] | cfg.mqtt_pub_mask;
-  cfg.mqtt_ha_discovery = doc["mqtt_ha_discovery"] | cfg.mqtt_ha_discovery;
-  cfg.mqtt_ha_prefix    = doc["mqtt_ha_prefix"]    | cfg.mqtt_ha_prefix;
-  cfg.mqtt_ha_retain    = doc["mqtt_ha_retain"]    | cfg.mqtt_ha_retain;
+  cfg.mqtt_tls_enabled   = doc["mqtt_tls_enabled"]   | cfg.mqtt_tls_enabled;
+  cfg.mqtt_tls_ca        = doc["mqtt_tls_ca"]        | cfg.mqtt_tls_ca;
+  cfg.mqtt_lwt_enabled   = doc["mqtt_lwt_enabled"]   | cfg.mqtt_lwt_enabled;
+  cfg.mqtt_lwt_topic     = doc["mqtt_lwt_topic"]     | cfg.mqtt_lwt_topic;
+  cfg.mqtt_lwt_online    = doc["mqtt_lwt_online"]    | cfg.mqtt_lwt_online;
+  cfg.mqtt_lwt_offline   = doc["mqtt_lwt_offline"]   | cfg.mqtt_lwt_offline;
+  cfg.mqtt_lwt_retain    = doc["mqtt_lwt_retain"]    | cfg.mqtt_lwt_retain;
+  cfg.mqtt_lwt_qos       = doc["mqtt_lwt_qos"]       | cfg.mqtt_lwt_qos;
+  cfg.mqtt_pub_mask      = doc["mqtt_pub_mask"]      | cfg.mqtt_pub_mask;
+  cfg.mqtt_ha_discovery  = doc["mqtt_ha_discovery"]  | cfg.mqtt_ha_discovery;
+  cfg.mqtt_ha_prefix     = doc["mqtt_ha_prefix"]     | cfg.mqtt_ha_prefix;
+  cfg.mqtt_ha_retain     = doc["mqtt_ha_retain"]     | cfg.mqtt_ha_retain;
 
     // Sanity
   if (cfg.mqtt_port == 0) cfg.mqtt_port = 1883;
@@ -128,7 +138,7 @@ bool saveConfig(const AppConfig &cfg) {
   doc["server_udp_ip"] = cfg.server_udp_ip;
   doc["server_udp_port"] = cfg.server_udp_port;
   doc["send_interval_ms"] = cfg.send_interval_ms;
-  doc["sensor_id"] = cfg.sensor_id;
+  doc["udp_sensor_id"] = cfg.udp_sensor_id;
 
   doc["udp_enabled"] = cfg.udp_enabled;
   doc["udp_fields_mask"] = cfg.udp_fields_mask;
@@ -152,24 +162,25 @@ bool saveConfig(const AppConfig &cfg) {
   doc["mqtt_port"]          = cfg.mqtt_port;
   doc["mqtt_user"]          = cfg.mqtt_user;
   doc["mqtt_pass"]          = cfg.mqtt_pass;
+  doc["mqtt_device_id"]     = cfg.mqtt_device_id;
   doc["mqtt_client_id"]     = cfg.mqtt_client_id;
   doc["mqtt_topic_base"]    = cfg.mqtt_topic_base;
   doc["mqtt_retain"]        = cfg.mqtt_retain;
   doc["mqtt_qos"]           = cfg.mqtt_qos;
   doc["mqtt_keepalive"]     = cfg.mqtt_keepalive;
   doc["mqtt_clean_session"] = cfg.mqtt_clean_session;
-  doc["mqtt_tls_enabled"] = cfg.mqtt_tls_enabled;
-  doc["mqtt_tls_ca"]      = cfg.mqtt_tls_ca;
-  doc["mqtt_lwt_enabled"] = cfg.mqtt_lwt_enabled;
-  doc["mqtt_lwt_topic"]   = cfg.mqtt_lwt_topic;
-  doc["mqtt_lwt_online"]  = cfg.mqtt_lwt_online;
-  doc["mqtt_lwt_offline"] = cfg.mqtt_lwt_offline;
-  doc["mqtt_lwt_retain"]  = cfg.mqtt_lwt_retain;
-  doc["mqtt_lwt_qos"]     = cfg.mqtt_lwt_qos;
-  doc["mqtt_pub_mask"] = cfg.mqtt_pub_mask;  
-  doc["mqtt_ha_discovery"] = cfg.mqtt_ha_discovery;
-  doc["mqtt_ha_prefix"]    = cfg.mqtt_ha_prefix;
-  doc["mqtt_ha_retain"]    = cfg.mqtt_ha_retain;
+  doc["mqtt_tls_enabled"]   = cfg.mqtt_tls_enabled;
+  doc["mqtt_tls_ca"]        = cfg.mqtt_tls_ca;
+  doc["mqtt_lwt_enabled"]   = cfg.mqtt_lwt_enabled;
+  doc["mqtt_lwt_topic"]     = cfg.mqtt_lwt_topic;
+  doc["mqtt_lwt_online"]    = cfg.mqtt_lwt_online;
+  doc["mqtt_lwt_offline"]   = cfg.mqtt_lwt_offline;
+  doc["mqtt_lwt_retain"]    = cfg.mqtt_lwt_retain;
+  doc["mqtt_lwt_qos"]       = cfg.mqtt_lwt_qos;
+  doc["mqtt_pub_mask"]      = cfg.mqtt_pub_mask;  
+  doc["mqtt_ha_discovery"]  = cfg.mqtt_ha_discovery;
+  doc["mqtt_ha_prefix"]     = cfg.mqtt_ha_prefix;
+  doc["mqtt_ha_retain"]     = cfg.mqtt_ha_retain;
 
 
   File f = LittleFS.open(CFG_FILE, "w");

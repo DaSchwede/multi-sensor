@@ -35,7 +35,8 @@ static String cardByIdRoot(const String &id) {
   if (id == "sensor")   return cardSensor();
   if (id == "memory")   return cardSpeicher();
   if (id == "time")     return cardZeit();
-  if (id == "settings") return cardAktuelleEinstellungen();
+  if (id == "udp")      return cardUdpEinstellungen();
+  if (id == "mqtt")     return cardMqtt();
   return "";
 }
 

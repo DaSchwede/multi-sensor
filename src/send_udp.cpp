@@ -25,7 +25,7 @@ static String udpPayloadCsv(const AppConfig& cfg, const SensorData& d, unsigned 
   const uint32_t m = cfg.udp_fields_mask;
 
   String s; s.reserve(160);
-  s += "id=" + cfg.sensor_id;
+  s += "id=" + cfg.udp_sensor_id;
   s += ";ts=" + String(ts);
 
   if (hasField(m, UF_TEMP)  && !isnan(d.temperature_c)) s += ";t="   + String(d.temperature_c, 2);
@@ -45,7 +45,7 @@ static String udpPayloadJson(const AppConfig& cfg, const SensorData& d, unsigned
   const uint32_t m = cfg.udp_fields_mask;
 
   String s; s.reserve(200);
-  s += "{\"id\":\"" + cfg.sensor_id + "\"";
+  s += "{\"id\":\"" + cfg.udp_sensor_id + "\"";
   s += ",\"ts\":" + String(ts);
 
   if (hasField(m, UF_TEMP))  s += ",\"t\":"       + jsNum2(d.temperature_c);

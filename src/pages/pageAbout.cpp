@@ -21,11 +21,12 @@ void pageAbout(WebServer &server) {
   html += "<tr><th>Autor</th><td>" + String(FW_AUTHOR) + "</td></tr>";
   html += "<tr><th>Copyright</th><td>" + String(FW_COPYRIGHT) + "</td></tr>";
   html += "<tr><th>Lizenz</th><td><a href='/license'>anzeigen</a></td></tr>";
-  html += "<tr><th>Änderungen</th><td>" + String(FW_DESCRIPTION) + "</td></tr>";
   html += "</table>";
-
   html += "</div>";
-  html += pagesFooter();
 
+  // ✅ Changelog als eigene Card
+  html += cardChangelog();
+
+  html += pagesFooter();
   server.send(200, "text/html; charset=utf-8", html);
 }

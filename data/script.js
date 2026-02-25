@@ -1,6 +1,6 @@
 // ===== UI: Darstellung (Chips + Validierung) =====
 (function(){
-  const ALL_IDS = ["live","system","network","sensor","memory","time","settings"];
+  const ALL_IDS = ["live","system","network","sensor","memory","time","udp","mqtt"];
 
   function normList(str){
     return (str || "")
@@ -93,14 +93,14 @@
     if(!root || !info) return;
 
     if(p === "standard"){
-      root.value = "live,network,time";
-      info.value = "system,network,sensor,memory,time,settings";
+      root.value = "live,network";
+      info.value = "system,network,sensor,memory,time,udp,mqtt";
     } else if(p === "minimal"){
       root.value = "live";
-      info.value = "sensor,network,time";
+      info.value = "sensor,network";
     } else if(p === "debug"){
-      root.value = "live,system,memory,network,time,settings";
-      info.value = "system,memory,network,time,sensor,settings";
+      root.value = "live,system,memory,network,time,udp,mqtt";
+      info.value = "system,memory,network,time,sensor,udp,mqtt";
     }
 
     renderChips("chips_root", "ui_root_order");
@@ -225,3 +225,84 @@ function hookMqttUi() {
 
 document.addEventListener("DOMContentLoaded", hookMqttUi);
 
+document.addEventListener('DOMContentLoaded', () => {
+  const drops = Array.from(document.querySelectorAll('.navdrop'));
+
+  function closeAll(except) {
+    drops.forEach(d => {
+      if (d !== except) {
+        d.classList.remove('open');
+        const b = d.querySelector('.navdrop-btn');
+        if (b) b.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+
+  drops.forEach(d => {
+    const btn = d.querySelector('.navdrop-btn');
+    if (!btn) return;
+
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const willOpen = !d.classList.contains('open');
+      closeAll(d);
+      d.classList.toggle('open', willOpen);
+      btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    });
+  });
+
+  // Klick außerhalb schließt alle Dropdowns
+  document.addEventListener('click', () => closeAll(null));
+});
+
+// ===== Settings: Zeit/NTP (OpenDTU-like) =====
+window.setupTimeUi = function setupTimeUi(){
+  const selMode = document.getElementById("tz_mode");
+  const box = document.getElementById("tz_offset_box");
+
+  function apply(){
+    if(!selMode || !box) return;
+    const offset = (selMode.value === "offset");
+    box.style.display = offset ? "" : "none";
+  }
+
+  async function refresh(){
+    try{
+      const r = await fetch("/api/time/status", { cache: "no-store" });
+      const j = await r.json();
+      const elLocal = document.getElementById("time_local");
+      const elNtp   = document.getElementById("time_ntp");
+
+      if(elLocal) elLocal.value = j.local || "—";
+      if(elNtp)   elNtp.value   = (j.ntp_valid ? "Gültig" : "Nicht gültig") + " (epoch=" + (j.epoch_utc || 0) + ")";
+    }catch(e){
+      const elLocal = document.getElementById("time_local");
+      const elNtp   = document.getElementById("time_ntp");
+      if(elLocal) elLocal.value = "—";
+      if(elNtp) elNtp.value = "Fehler";
+    }
+  }
+
+  const btn = document.getElementById("btn_time_sync");
+  if(btn){
+    btn.addEventListener("click", async ()=>{
+      btn.disabled = true;
+      btn.textContent = "Synchronisiere…";
+      try{
+        await fetch("/api/time/sync", { method: "POST" });
+      }catch(e){}
+      await refresh();
+      btn.textContent = "Zeit synchronisieren";
+      btn.disabled = false;
+    });
+  }
+
+  if(selMode) selMode.addEventListener("change", apply);
+
+  apply();
+  refresh();
+  // leichte Live-Aktualisierung
+  setInterval(refresh, 5000);
+};

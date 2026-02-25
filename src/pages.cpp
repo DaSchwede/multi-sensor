@@ -53,7 +53,7 @@ static String navDrop(const String& label,
 
   String h;
   h += "<div class='navdrop " + activeCls + "'>";
-  h +=   "<a class='navdrop-btn' href='" + basePath + "'>" + label + " <span class='caret'>▾</span></a>";
+  h +=   "<a class='navdrop-btn' href='#' data-navdrop='1' aria-haspopup='true' aria-expanded='false'>" + label + " <span class='caret'>▾</span></a>";
   h +=   "<div class='navdrop-menu'>";
 
   for (const auto& it : items) {
@@ -77,6 +77,72 @@ static String uptimeString() {
   char buf[32];
   snprintf(buf, sizeof(buf), "%ud %02u:%02u:%02u", d, h, m, s);
   return String(buf);
+}
+
+String cardChangelog() {
+  String h;
+  h += "<div class='card'>";
+  h += "<h2>Changelog</h2>";
+
+  if (!LittleFS.exists("/changelog.txt")) {
+    h += "<p class='small'>Kein Changelog gefunden.</p>";
+    h += "</div>";
+    return h;
+  }
+
+  File f = LittleFS.open("/changelog.txt", "r");
+  if (!f) {
+    h += "<p class='small'>Fehler beim Laden des Changelogs.</p>";
+    h += "</div>";
+    return h;
+  }
+
+  h += "<div class='changelog'>";
+
+  bool inList = false;
+
+  while (f.available()) {
+    String line = f.readStringUntil('\n');
+    line.trim();
+
+    if (line.length() == 0) {
+      if (inList) {
+        h += "</ul>";
+        inList = false;
+      }
+      continue;
+    }
+
+    // Versionszeile (kein - am Anfang)
+    if (!line.startsWith("-")) {
+      if (inList) {
+        h += "</ul>";
+        inList = false;
+      }
+      h += "<h3>" + line + "</h3>";
+      continue;
+    }
+
+    // Bulletpoint
+    if (!inList) {
+      h += "<ul>";
+      inList = true;
+    }
+
+    line.remove(0, 1); // "-" entfernen
+    line.trim();
+    h += "<li>" + line + "</li>";
+  }
+
+  if (inList) {
+    h += "</ul>";
+  }
+
+  h += "</div>";
+  h += "</div>";
+
+  f.close();
+  return h;
 }
 
 static String loadLicenseText() {
@@ -148,6 +214,33 @@ std::vector<std::pair<String,String>> infoItems = {
     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
     "<link rel='stylesheet' href='/style.css'>"
     "<script defer src='/script.js'></script>"
+    "<script>"
+    "document.addEventListener('DOMContentLoaded', () => {"
+    "  const drops = Array.from(document.querySelectorAll('.navdrop'));"
+    "  function closeAll(except){"
+    "    drops.forEach(d => {"
+    "      if(d !== except){"
+    "        d.classList.remove('open');"
+    "        const b = d.querySelector('.navdrop-btn');"
+    "        if(b) b.setAttribute('aria-expanded','false');"
+    "      }"
+    "    });"
+    "  }"
+    "  drops.forEach(d => {"
+    "    const btn = d.querySelector('.navdrop-btn');"
+    "    if(!btn) return;"
+    "    btn.addEventListener('click', (e) => {"
+    "      e.preventDefault();"
+    "      e.stopPropagation();"
+    "      const willOpen = !d.classList.contains('open');"
+    "      closeAll(d);"
+    "      d.classList.toggle('open', willOpen);"
+    "      btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');"
+    "    });"
+    "  });"
+    "  document.addEventListener('click', () => closeAll(null));"
+    "});"
+    "</script>"
     "<link rel='icon' type='image/svg+xml' href='/favicon.svg'>"
     "<title>") + String(FW_NAME) + " - " + title + "</title>"
     "</head><body>"
@@ -206,6 +299,33 @@ static String headerHtmlPublic(WebServer &server, const String &title, const Str
     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
     "<link rel='stylesheet' href='/style.css'>"
     "<script defer src='/script.js'></script>"
+    "<script>"
+    "document.addEventListener('DOMContentLoaded', () => {"
+    "  const drops = Array.from(document.querySelectorAll('.navdrop'));"
+    "  function closeAll(except){"
+    "    drops.forEach(d => {"
+    "      if(d !== except){"
+    "        d.classList.remove('open');"
+    "        const b = d.querySelector('.navdrop-btn');"
+    "        if(b) b.setAttribute('aria-expanded','false');"
+    "      }"
+    "    });"
+    "  }"
+    "  drops.forEach(d => {"
+    "    const btn = d.querySelector('.navdrop-btn');"
+    "    if(!btn) return;"
+    "    btn.addEventListener('click', (e) => {"
+    "      e.preventDefault();"
+    "      e.stopPropagation();"
+    "      const willOpen = !d.classList.contains('open');"
+    "      closeAll(d);"
+    "      d.classList.toggle('open', willOpen);"
+    "      btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');"
+    "    });"
+    "  });"
+    "  document.addEventListener('click', () => closeAll(null));"
+    "});"
+    "</script>"
     "<link rel='icon' type='image/svg+xml' href='/favicon.svg'>"
     "<title>") + String(FW_NAME) + " - " + title + "</title>"
     "</head><body>"
@@ -317,20 +437,60 @@ String cardZeit() {
   return h;
 }
 
-String cardAktuelleEinstellungen() {
+String cardUdpEinstellungen() {
   String h;
   h += "<div class='card'><h2>UDP Einstellungen</h2><table class='tbl'>";
 
   if (!gCfg) {
     h += "<tr><th>Status</th><td>cfg fehlt</td></tr>";
   } else {
-    h += "<tr><th>Sensor-ID</th><td>" + gCfg->sensor_id + "</td></tr>";
+    h += "<tr><th>Sensor-ID</th><td>" + gCfg->udp_sensor_id + "</td></tr>";
     h += "<tr><th>Intervall</th><td>" + String(gCfg->send_interval_ms) + " ms</td></tr>";
     h += "<tr><th>Server IP</th><td>" + gCfg->server_udp_ip + "</td></tr>";
     h += "<tr><th>UDP Port</th><td>" + String(gCfg->server_udp_port) + "</td></tr>";
-    h += "<tr><th>MQTT</th><td>" + String(gCfg->mqtt_enabled ? "An" : "Aus") + "</td></tr>";
   }
 
   h += "</table></div>";
   return h;
 }
+
+String cardMqtt() {
+  String h;
+  h += "<div class='card'><h2>MQTT</h2><table class='tbl'>";
+
+  if (!gCfg) {
+    h += "<tr><th>Status</th><td>cfg fehlt</td></tr>";
+  } else {
+    h += "<tr><th>Aktiv</th><td>" + String(gCfg->mqtt_enabled ? "Ja" : "Nein") + "</td></tr>";
+
+    h += "<tr><th>Broker</th><td>" + (gCfg->mqtt_host.length() ? gCfg->mqtt_host : "—") + "</td></tr>";
+    h += "<tr><th>Port</th><td>" + String(gCfg->mqtt_port) + "</td></tr>";
+    h += "<tr><th>User</th><td>" + (gCfg->mqtt_user.length() ? gCfg->mqtt_user : "—") + "</td></tr>";
+    h += "<tr><th>Passwort</th><td>" + String(gCfg->mqtt_pass.length() ? "gesetzt" : "—") + "</td></tr>";
+
+    h += "<tr><th>Client ID</th><td>" + (gCfg->mqtt_client_id.length() ? gCfg->mqtt_client_id : "—") + "</td></tr>";
+    h += "<tr><th>Topic Base</th><td>" + (gCfg->mqtt_topic_base.length() ? gCfg->mqtt_topic_base : "—") + "</td></tr>";
+
+    h += "<tr><th>Clean Session</th><td>" + String(gCfg->mqtt_clean_session ? "Ja" : "Nein") + "</td></tr>";
+    h += "<tr><th>Retain</th><td>" + String(gCfg->mqtt_retain ? "Ja" : "Nein") + "</td></tr>";
+    h += "<tr><th>QoS</th><td>" + String(gCfg->mqtt_qos) + "</td></tr>";
+    h += "<tr><th>Keepalive</th><td>" + String(gCfg->mqtt_keepalive) + " s</td></tr>";
+
+    // Zusatzfeatures aus deinem Settings-File
+    h += "<tr><th>TLS</th><td>" + String(gCfg->mqtt_tls_enabled ? "Ja" : "Nein") + "</td></tr>";
+    h += "<tr><th>CA Zertifikat</th><td>" + String(gCfg->mqtt_tls_ca.length() ? "gesetzt" : "—") + "</td></tr>";
+
+    h += "<tr><th>Home Assistant Discovery</th><td>" + String(gCfg->mqtt_ha_discovery ? "Ja" : "Nein") + "</td></tr>";
+    h += "<tr><th>HA Prefix</th><td>" + (gCfg->mqtt_ha_prefix.length() ? gCfg->mqtt_ha_prefix : "—") + "</td></tr>";
+    h += "<tr><th>HA Retain</th><td>" + String(gCfg->mqtt_ha_retain ? "Ja" : "Nein") + "</td></tr>";
+
+    h += "<tr><th>LWT</th><td>" + String(gCfg->mqtt_lwt_enabled ? "Ja" : "Nein") + "</td></tr>";
+    h += "<tr><th>LWT Topic</th><td>" + (gCfg->mqtt_lwt_topic.length() ? gCfg->mqtt_lwt_topic : "—") + "</td></tr>";
+    h += "<tr><th>LWT QoS</th><td>" + String(gCfg->mqtt_lwt_qos) + "</td></tr>";
+    h += "<tr><th>LWT Retain</th><td>" + String(gCfg->mqtt_lwt_retain ? "Ja" : "Nein") + "</td></tr>";
+  }
+
+  h += "</table></div>";
+  return h;
+}
+
