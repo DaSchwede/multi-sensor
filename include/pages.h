@@ -76,4 +76,12 @@ String cardNetzwerk();
 String cardSensor();
 String cardSpeicher();
 String cardZeit();
-String cardAktuelleEinstellungen();
+String cardUdpEinstellungen();
+String cardMqtt();
+String cardChangelog();
+
+// Info → Zeit / NTP
+void pageNTP(WebServer &server);
+void apiTimeStatus(WebServer &server);
+void apiTimeSync(WebServer &server);
+String pagesTimeLiveScript();

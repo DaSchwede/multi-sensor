@@ -7,6 +7,9 @@
 void mqttBegin(const AppConfig &cfg);
 void mqttLoop(const AppConfig &cfg);
 bool mqttIsConnected();
+int  mqttState();
+const char* mqttStateStr();        // Klartext für die Oberfläche
+void mqttResetDiscoverySent();     // Discovery beim nächsten Durchlauf erneut senden
 bool mqttEnsureConnected(const AppConfig &cfg);
 
 // Publiziert unter <topic_base>/<sensor_id>/<subtopic>

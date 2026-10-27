@@ -40,8 +40,9 @@ static String safeSegment(String s) {
   return s;
 }
 
+// Geräte-ID für Topics/Discovery: eigene MQTT-ID, sonst die UDP Sensor-ID
 static String safeSensorId(const AppConfig &cfg) {
-  String sid = safeSegment(cfg.sensor_id);
+  String sid = safeSegment(cfg.mqtt_device_id.length() ? cfg.mqtt_device_id : cfg.sensor_id);
   if (sid.length() == 0) sid = "sensor";
   return sid;
 }
@@ -281,6 +282,26 @@ void mqttLoop(const AppConfig &cfg) {
     if (cfg.mqtt_ha_discovery) mqttPublishHADiscovery(cfg);
   }
 }
+
+int mqttState() { return mqtt.state(); }
+
+const char* mqttStateStr() {
+  switch (mqtt.state()) {
+    case MQTT_CONNECTED:               return "verbunden";
+    case MQTT_CONNECTION_TIMEOUT:      return "Zeitüberschreitung";
+    case MQTT_CONNECTION_LOST:         return "Verbindung verloren";
+    case MQTT_CONNECT_FAILED:          return "Verbindung fehlgeschlagen";
+    case MQTT_DISCONNECTED:            return "getrennt";
+    case MQTT_CONNECT_BAD_PROTOCOL:    return "falsches Protokoll";
+    case MQTT_CONNECT_BAD_CLIENT_ID:   return "Client-ID abgelehnt";
+    case MQTT_CONNECT_UNAVAILABLE:     return "Broker nicht verfügbar";
+    case MQTT_CONNECT_BAD_CREDENTIALS: return "Benutzer/Passwort falsch";
+    case MQTT_CONNECT_UNAUTHORIZED:    return "nicht berechtigt";
+    default:                           return "unbekannt";
+  }
+}
+
+void mqttResetDiscoverySent() { discoveryPending = true; }
 
 bool mqttIsConnected() {
   return mqtt.connected();

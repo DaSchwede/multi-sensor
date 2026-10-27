@@ -30,6 +30,7 @@ static void sanitize(AppConfig &cfg) {
   if (cfg.udp_format < 0 || cfg.udp_format > 1) cfg.udp_format = 0;
   if (isnan(cfg.bme_temp_offset_c) || cfg.bme_temp_offset_c < -10.0f || cfg.bme_temp_offset_c > 10.0f) cfg.bme_temp_offset_c = 0.0f;
   cfg.sensor_id.trim();
+  cfg.mqtt_device_id.trim();
 }
 
 bool configLoadFromFile(const char *path, AppConfig &cfg) {
@@ -61,7 +62,10 @@ bool configLoadFromFile(const char *path, AppConfig &cfg) {
   cfg.server_udp_ip    = doc["server_udp_ip"] | cfg.server_udp_ip;
   cfg.server_udp_port  = doc["server_udp_port"] | cfg.server_udp_port;
   cfg.send_interval_ms = doc["send_interval_ms"] | cfg.send_interval_ms;
-  cfg.sensor_id        = doc["sensor_id"] | cfg.sensor_id;
+  // UDP Sensor-ID: Key "udp_sensor_id" (seit Feb 2026), ältere Configs nutzen "sensor_id"
+  if (doc["udp_sensor_id"].is<const char*>()) cfg.sensor_id = doc["udp_sensor_id"] | cfg.sensor_id;
+  else                                        cfg.sensor_id = doc["sensor_id"]     | cfg.sensor_id;
+  cfg.mqtt_device_id   = doc["mqtt_device_id"] | cfg.mqtt_device_id;
 
   cfg.udp_enabled     = doc["udp_enabled"] | cfg.udp_enabled;
   cfg.udp_fields_mask = doc["udp_fields_mask"] | cfg.udp_fields_mask;
@@ -174,7 +178,9 @@ bool saveConfig(const AppConfig &cfg) {
   doc["server_udp_ip"]    = cfg.server_udp_ip;
   doc["server_udp_port"]  = cfg.server_udp_port;
   doc["send_interval_ms"] = cfg.send_interval_ms;
-  doc["sensor_id"]        = cfg.sensor_id;
+  doc["udp_sensor_id"]    = cfg.sensor_id;
+  doc["sensor_id"]        = cfg.sensor_id;   // für ältere Firmware-Stände (Downgrade)
+  doc["mqtt_device_id"]   = cfg.mqtt_device_id;
 
   doc["udp_enabled"]     = cfg.udp_enabled;
   doc["udp_fields_mask"] = cfg.udp_fields_mask;

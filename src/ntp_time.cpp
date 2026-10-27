@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <time.h>
 #include <sys/time.h>
+#include "esp_sntp.h"
 
 // Zeit kommt jetzt vom SNTP-Client des ESP-IDF (configTzTime). Vorteile:
 //  - nicht blockierend (vorher konnte NTPClient den Loop bis zu 1 s anhalten)
@@ -9,6 +10,12 @@
 //  - Sommerzeit über POSIX-TZ-Regel statt eigener Berechnung
 
 static bool started = false;
+static volatile time_t lastSyncUtc = 0;   // Zeitpunkt der letzten erfolgreichen NTP-Synchronisation
+
+// wird vom SNTP-Dienst nach jeder Synchronisation aufgerufen
+static void onTimeSync(struct timeval *tv) {
+  lastSyncUtc = tv ? tv->tv_sec : time(nullptr);
+}
 static String gTz;
 
 // SNTP merkt sich nur den Zeiger auf den Servernamen -> eigener, dauerhafter Puffer.
@@ -46,8 +53,8 @@ String ntpPosixTz(const AppConfig &cfg) {
            ",M3.5.0/" + clockTime(3600 + base) +
            ",M10.5.0/" + clockTime(3600 + base + dst);
   }
-  // manuell: fester Offset (wie bisher nur Basis, keine Sommerzeit)
-  return "STD" + posixOffset(base);
+  // fester Offset: Basis + (dauerhafter) Zuschlag, kein Wechsel
+  return "STD" + posixOffset(base + cfg.dst_add_seconds);
 }
 
 void ntpApplyTimezone(const AppConfig &cfg) {
@@ -65,6 +72,7 @@ void ntpBegin(const AppConfig &cfg) {
   strlcpy(gServerBuf[gServerIdx], server.c_str(), sizeof(gServerBuf[gServerIdx]));
 
   gTz = ntpPosixTz(cfg);
+  sntp_set_time_sync_notification_cb(onTimeSync);
   configTzTime(gTz.c_str(), gServerBuf[gServerIdx]);
   started = true;
   Serial.printf("NTP: Server=%s TZ=%s\n", gServerBuf[gServerIdx], gTz.c_str());
@@ -129,4 +137,16 @@ String ntpTimeString(const AppConfig &cfg) {
 String ntpDateTimeString(const AppConfig &cfg) {
   (void)cfg;
   return fmtLocal("%Y-%m-%d %H:%M:%S");
+}
+
+bool ntpStarted() { return started; }
+
+const char* ntpServer() { return started ? gServerBuf[gServerIdx] : ""; }
+
+unsigned long ntpLastSyncUtc() { return (unsigned long)lastSyncUtc; }
+
+bool ntpSyncNow() {
+  if (!started || WiFi.status() != WL_CONNECTED) return false;
+  sntp_restart();   // neue Anfrage an den Server sofort auslösen
+  return true;
 }

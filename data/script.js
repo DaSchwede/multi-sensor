@@ -1,6 +1,6 @@
 // ===== UI: Darstellung (Chips + Validierung) =====
 (function(){
-  const ALL_IDS = ["live","system","network","sensor","memory","time","settings"];
+  const ALL_IDS = ["live","system","network","sensor","memory","time","udp","mqtt"];
 
   function normList(str){
     return (str || "")
@@ -93,14 +93,14 @@
     if(!root || !info) return;
 
     if(p === "standard"){
-      root.value = "live,network,time";
-      info.value = "system,network,sensor,memory,time,settings";
+      root.value = "live,network";
+      info.value = "system,network,sensor,memory,time,udp,mqtt";
     } else if(p === "minimal"){
       root.value = "live";
-      info.value = "sensor,network,time";
+      info.value = "sensor,network";
     } else if(p === "debug"){
-      root.value = "live,system,memory,network,time,settings";
-      info.value = "system,memory,network,time,sensor,settings";
+      root.value = "live,system,memory,network,time,udp,mqtt";
+      info.value = "system,memory,network,time,sensor,udp,mqtt";
     }
 
     renderChips("chips_root", "ui_root_order");
@@ -225,3 +225,4 @@ function hookMqttUi() {
 
 document.addEventListener("DOMContentLoaded", hookMqttUi);
 
+// Menü-Dropdowns und Zeit/NTP-Seite: JavaScript kommt seit 1.4.0 aus der Firmware.

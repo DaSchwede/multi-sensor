@@ -29,3 +29,9 @@ String ntpDateTimeString(const AppConfig &cfg);   // "YYYY-MM-DD HH:MM:SS"
 bool ntpDstActive();                                    // Sommerzeit gerade aktiv?
 int  ntpLocalOffsetSeconds(const AppConfig &cfg, unsigned long utcEpoch);
 String ntpPosixTz(const AppConfig &cfg);                // verwendeter POSIX-TZ-String
+
+// Status für Info → Zeit / NTP
+bool ntpStarted();
+const char* ntpServer();
+unsigned long ntpLastSyncUtc();   // 0 = noch nie synchronisiert
+bool ntpSyncNow();                // neue Synchronisation anstoßen (asynchron)

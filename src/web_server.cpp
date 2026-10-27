@@ -87,6 +87,8 @@ void webServerBegin(WebServer &server,
   server.on("/api/live", HTTP_GET, [&](){ apiLive(server); });
   server.on("/api/history", HTTP_GET, [&](){ apiHistory(server); });
   server.on("/api/logs", HTTP_GET, [&](){ apiLogList(server); });
+  server.on("/api/time/status", HTTP_GET, [&](){ apiTimeStatus(server); });
+  server.on("/api/time/sync", HTTP_POST, [&](){ apiTimeSync(server); });
   server.on("/api/logs/download", HTTP_GET, [&](){ apiLogDownload(server); });
 
   // Seiten
@@ -96,6 +98,11 @@ void webServerBegin(WebServer &server,
   server.on("/logger", HTTP_GET,  [&](){ pageLogger(server); });
 
   server.on("/info/system", HTTP_GET, [&](){ pageSystemInfo(server); });
+  server.on("/info/time", HTTP_GET, [&](){ pageNTP(server); });
+  server.on("/settings/ntp", HTTP_GET, [&](){   // alte Adresse (Feb 2026) -> Einstellungen Zeit
+    server.sendHeader("Location", "/settings/time", true);
+    server.send(302, "text/plain", "");
+  });
 
 
   server.on("/settings", HTTP_GET, [&](){

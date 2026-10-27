@@ -11,6 +11,8 @@
 #include <esp_heap_caps.h>
 #include "device_id.h"
 #include "html_util.h"
+#include "mqtt_client.h"
+#include "changelog.h"
 
 
 // ============================================================================
@@ -55,7 +57,8 @@ static String navDrop(const String& label,
 
   String h;
   h += "<div class='navdrop " + activeCls + "'>";
-  h +=   "<a class='navdrop-btn' href='" + basePath + "'>" + label + " <span class='caret'>▾</span></a>";
+  // Menü öffnet per Klick (Touch) und per Maus-Hover; basePath bleibt als Fallback ohne JavaScript
+  h +=   "<a class='navdrop-btn' href='" + basePath + "' aria-haspopup='true' aria-expanded='false'>" + label + " <span class='caret'>▾</span></a>";
   h +=   "<div class='navdrop-menu'>";
 
   for (const auto& it : items) {
@@ -139,6 +142,7 @@ std::vector<std::pair<String,String>> infoItems = {
     { "/info",        "Übersicht" },
     { "/info/system", "Systeminfo" },
     { "/logger", "Logger" },
+    { "/info/time",   "Zeit / NTP" },
         // später erweiterbar:
     // { "/info/network", "Netzwerk" },
     // { "/info/sensor",  "Sensor" },
@@ -151,6 +155,18 @@ std::vector<std::pair<String,String>> infoItems = {
     "<link rel='stylesheet' href='/style.css'>"
     "<link rel='stylesheet' href='/ui.css?v=" FW_VERSION "'>"
     "<script defer src='/script.js'></script>"
+    "<script>"
+    "document.addEventListener('DOMContentLoaded',function(){"
+    "var drops=[].slice.call(document.querySelectorAll('.navdrop'));"
+    "function closeAll(ex){drops.forEach(function(d){if(d!==ex){d.classList.remove('open');"
+    "var b=d.querySelector('.navdrop-btn');if(b)b.setAttribute('aria-expanded','false');}});}"
+    "drops.forEach(function(d){var b=d.querySelector('.navdrop-btn');if(!b)return;"
+    "b.addEventListener('click',function(e){e.preventDefault();e.stopImmediatePropagation();"
+    "var o=!d.classList.contains('open');closeAll(d);d.classList.toggle('open',o);"
+    "b.setAttribute('aria-expanded',o?'true':'false');},true);});"
+    "document.addEventListener('click',function(){closeAll(null);});"
+    "});"
+    "</script>"
     "<link rel='icon' type='image/svg+xml' href='/favicon.svg'>"
     "<title>") + String(FW_NAME) + " - " + title + "</title>"
     "</head><body>"
@@ -173,10 +189,11 @@ static String headerHtmlPublic(WebServer &server, const String &title, const Str
   std::vector<std::pair<String,String>> infoItems = {
   { "/info",           "Übersicht" },
   { "/info/system",    "Systeminfo" },
+  { "/logger",         "Logger" },
+  { "/info/time",      "Zeit / NTP" },
   //{ "/info/network",   "Netzwerk" },
   //{ "/info/sensor",    "Sensor" },
   //{ "/info/memory",    "Speicher" },
-  //{ "/info/time",      "Zeit / NTP" },
   //{ "/info/settings",  "Einstellungen" },
 };
 
@@ -213,6 +230,18 @@ static String headerHtmlPublic(WebServer &server, const String &title, const Str
     "<link rel='stylesheet' href='/style.css'>"
     "<link rel='stylesheet' href='/ui.css?v=" FW_VERSION "'>"
     "<script defer src='/script.js'></script>"
+    "<script>"
+    "document.addEventListener('DOMContentLoaded',function(){"
+    "var drops=[].slice.call(document.querySelectorAll('.navdrop'));"
+    "function closeAll(ex){drops.forEach(function(d){if(d!==ex){d.classList.remove('open');"
+    "var b=d.querySelector('.navdrop-btn');if(b)b.setAttribute('aria-expanded','false');}});}"
+    "drops.forEach(function(d){var b=d.querySelector('.navdrop-btn');if(!b)return;"
+    "b.addEventListener('click',function(e){e.preventDefault();e.stopImmediatePropagation();"
+    "var o=!d.classList.contains('open');closeAll(d);d.classList.toggle('open',o);"
+    "b.setAttribute('aria-expanded',o?'true':'false');},true);});"
+    "document.addEventListener('click',function(){closeAll(null);});"
+    "});"
+    "</script>"
     "<link rel='icon' type='image/svg+xml' href='/favicon.svg'>"
     "<title>") + String(FW_NAME) + " - " + title + "</title>"
     "</head><body>"
@@ -332,7 +361,7 @@ String cardZeit() {
   return h;
 }
 
-String cardAktuelleEinstellungen() {
+String cardUdpEinstellungen() {
   String h;
   h += "<div class='card'><h2>UDP Einstellungen</h2><table class='tbl'>";
 
@@ -343,9 +372,63 @@ String cardAktuelleEinstellungen() {
     h += "<tr><th>Intervall</th><td>" + String(gCfg->send_interval_ms) + " ms</td></tr>";
     h += "<tr><th>Server IP</th><td>" + htmlEscape(gCfg->server_udp_ip) + "</td></tr>";
     h += "<tr><th>UDP Port</th><td>" + String(gCfg->server_udp_port) + "</td></tr>";
-    h += "<tr><th>MQTT</th><td>" + String(gCfg->mqtt_enabled ? "An" : "Aus") + "</td></tr>";
+    h += "<tr><th>Format</th><td>" + String(gCfg->udp_format == 1 ? "JSON" : "Text (CSV)") + "</td></tr>";
+    h += "<tr><th>Aktiv</th><td>" + String(gCfg->udp_enabled ? "Ja" : "Nein") + "</td></tr>";
   }
 
   h += "</table></div>";
+  return h;
+}
+
+String cardMqtt() {
+  String h;
+  h += "<div class='card'><h2>MQTT</h2><table class='tbl'>";
+  if (!gCfg) {
+    h += "<tr><th>Status</th><td>cfg fehlt</td></tr>";
+  } else if (!gCfg->mqtt_enabled) {
+    h += "<tr><th>Status</th><td>ausgeschaltet</td></tr>";
+  } else {
+    const bool conn = mqttIsConnected();
+    h += "<tr><th>Status</th><td><span class='badge " + String(conn ? "badge-ok" : "badge-bad") + "'>" +
+         String(mqttStateStr()) + "</span></td></tr>";
+    h += "<tr><th>Broker</th><td>" + (gCfg->mqtt_host.length() ? htmlEscape(gCfg->mqtt_host) : String("—")) +
+         ":" + String(gCfg->mqtt_port) + (gCfg->mqtt_tls_enabled ? " (TLS)" : "") + "</td></tr>";
+    h += "<tr><th>Topic</th><td><code>" + htmlEscape(mqttTopicFor(*gCfg, "…")) + "</code></td></tr>";
+    h += "<tr><th>Home Assistant</th><td>" + String(gCfg->mqtt_ha_discovery ? "Discovery an" : "aus") + "</td></tr>";
+    h += "<tr><th>Last Will</th><td>" + String(gCfg->mqtt_lwt_enabled ? "an" : "aus") + "</td></tr>";
+  }
+  h += "</table></div>";
+  return h;
+}
+
+// Changelog aus include/changelog.h als Liste
+String cardChangelog() {
+  const String txt = String(FPSTR(CHANGELOG_TXT));
+  String h = "<div class='card'><h2>Änderungen</h2><div class='changelog'>";
+  bool inList = false;
+  int start = 0;
+  while (start <= (int)txt.length()) {
+    int nl = txt.indexOf('\n', start);
+    if (nl < 0) nl = txt.length();
+    String line = txt.substring(start, nl);
+    start = nl + 1;
+    line.trim();
+    if (!line.length()) {
+      if (inList) { h += "</ul>"; inList = false; }
+      if (nl >= (int)txt.length()) break;
+      continue;
+    }
+    if (line.startsWith("-")) {
+      if (!inList) { h += "<ul>"; inList = true; }
+      line.remove(0, 1);
+      line.trim();
+      h += "<li>" + htmlEscape(line) + "</li>";
+    } else {
+      if (inList) { h += "</ul>"; inList = false; }
+      h += "<h3>" + htmlEscape(line) + "</h3>";
+    }
+  }
+  if (inList) h += "</ul>";
+  h += "</div></div>";
   return h;
 }

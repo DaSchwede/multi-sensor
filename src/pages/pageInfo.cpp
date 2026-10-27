@@ -9,7 +9,8 @@ static String cardByIdInfo(const String &id) {
   if (id == "sensor")   return cardSensor();
   if (id == "memory")   return cardSpeicher();
   if (id == "time")     return cardZeit();
-  if (id == "settings") return cardAktuelleEinstellungen();
+  if (id == "udp" || id == "settings") return cardUdpEinstellungen();
+  if (id == "mqtt")     return cardMqtt();
   return ""; // unknown -> skip
 }
 
@@ -39,7 +40,7 @@ void pageInfo(WebServer &server) {
   // Fallback: wenn leer oder alles unknown -> Standard befüllen
   if (idx == 0) {
     left  = cardSystem() + cardNetzwerk() + cardSensor();
-    right = cardSpeicher() + cardZeit() + cardAktuelleEinstellungen();
+    right = cardSpeicher() + cardZeit() + cardUdpEinstellungen() + cardMqtt();
     unknown = 0;
   }
 

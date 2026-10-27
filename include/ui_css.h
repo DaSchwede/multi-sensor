@@ -42,6 +42,17 @@ select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius
 .chart-canvas{display:block;width:100%;height:170px;touch-action:pan-y;cursor:crosshair;}
 .chart-tip{position:absolute;top:0;background:#111827;color:#fff;font-size:12px;font-weight:600;padding:4px 8px;border-radius:6px;pointer-events:none;white-space:nowrap;}
 .files-scroll{max-height:320px;overflow:auto;}
+/* Untermenüs: per Klick (Touch) öffnen, Hover nur mit Maus */
+.navdrop.open .navdrop-menu{display:block;}
+@media (hover:none){ .navdrop:hover .navdrop-menu{display:none;} .navdrop.open .navdrop-menu{display:block;} }
+/* Changelog (Über) */
+.changelog h3{margin:16px 0 6px;font-size:15px;}
+.changelog h3:first-child{margin-top:0;}
+.changelog ul{margin:0 0 10px 18px;padding:0;}
+.changelog li{margin:4px 0;font-size:14px;}
+/* Zeit-Einstellungen */
+.time-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px;}
+@media (max-width:640px){ .time-grid{grid-template-columns:1fr;} }
 /* Menü: am Handy hinter einem Menü-Knopf */
 .nav-toggle{display:none;}
 @media (max-width:700px){

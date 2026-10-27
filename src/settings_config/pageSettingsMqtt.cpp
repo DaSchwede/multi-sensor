@@ -73,6 +73,11 @@ void pageSettingsMqtt(WebServer &server) {
     }
 
     // Client / Topic
+    if (server.hasArg("mqtt_device_id")) {
+      String id = trimCopy(server.arg("mqtt_device_id"));
+      id.replace("/", "_"); id.replace("#", "_"); id.replace("+", "_");
+      cfg->mqtt_device_id = id;
+    }
     if (server.hasArg("mqtt_client_id")) {
       cfg->mqtt_client_id = trimCopy(server.arg("mqtt_client_id"));
     }
@@ -182,6 +187,8 @@ void pageSettingsMqtt(WebServer &server) {
           "<input name='mqtt_port' type='number' min='1' max='65535' value='" + String(cfg->mqtt_port) + "'></div>";
   html += "<div class='form-row'><label>Client ID</label>"
           "<input name='mqtt_client_id' placeholder='z.B. multi-sensor-01' value='" + htmlEscape(cfg->mqtt_client_id) + "'></div>";
+  html += "<div class='form-row'><label>Geräte-ID (Topics / Home Assistant)</label>"
+          "<input name='mqtt_device_id' maxlength='40' placeholder='leer = Sensor-ID aus UDP (" + htmlEscape(cfg->sensor_id) + ")' value='" + htmlEscape(cfg->mqtt_device_id) + "'></div>";
   html += "<div class='form-row'><label>Benutzer</label>"
           "<input name='mqtt_user' value='" + htmlEscape(cfg->mqtt_user) + "'></div>";
   html += "<div class='form-row'><label>Passwort</label>"
@@ -192,7 +199,7 @@ void pageSettingsMqtt(WebServer &server) {
   html += "<div class='form-row'><label>Topic Base</label>"
           "<input name='mqtt_topic_base' placeholder='z.B. multisensor/wohnzimmer' value='" + htmlEscape(cfg->mqtt_topic_base) + "'></div>";
   html += "<div class='hint'>Topics: <code>" + htmlEscape(mqttTopicFor(*cfg, "temperature")) + "</code> usw. "
-          "(Topic Base / Sensor-ID / Wert). Die Sensor-ID stellst du unter UDP ein.</div>";
+          "(Topic Base / Geräte-ID / Wert).</div>";
   html += "<div class='form-row'>"
           "<label><input type='checkbox' name='mqtt_clean_session' " + String(cfg->mqtt_clean_session ? "checked" : "") + "> Clean Session</label>"
           "</div>";

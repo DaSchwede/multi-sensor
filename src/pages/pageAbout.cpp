@@ -33,9 +33,7 @@ void pageAbout(WebServer &server) {
           "<a href='/license'>Lizenzbedingungen</a>.</div>";
   html += "</div>";
 
-  html += "<div class='card'><h2>Änderungen</h2>";
-  html += "<div class='small' style='line-height:1.6'>" + String(FW_DESCRIPTION) + "</div>";
-  html += "</div>";
+  html += cardChangelog();
 
   html += pagesFooter();
   server.send(200, "text/html; charset=utf-8", html);

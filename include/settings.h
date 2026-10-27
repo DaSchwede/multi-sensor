@@ -35,7 +35,10 @@ struct AppConfig {
   String server_udp_ip = "192.168.1.10";
   uint16_t server_udp_port = 7000;
   uint32_t send_interval_ms = 5000;
-  String sensor_id = "";          // leer -> beim Start "Sensor-<MAC>" 
+  String sensor_id = "";          // UDP Sensor-ID (JSON-Key "udp_sensor_id"); leer -> "Sensor-<MAC>"
+
+  // MQTT / Home Assistant Geräte-ID (Topics + Discovery). Leer -> UDP Sensor-ID verwenden
+  String mqtt_device_id = "";
 
   // MQTT
   bool   mqtt_enabled        = false;
@@ -83,10 +86,10 @@ struct AppConfig {
   bool license_require_accept = true;
 
   // UI-Reihenfolge (kommasepariert)
-  String ui_root_order = "live,network,time";
-  String ui_info_order = "system,network,sensor,memory,time,settings";
+  String ui_root_order = "live,network";
+  String ui_info_order = "system,network,sensor,memory,time,udp,mqtt";
   String ui_info_hide  = "";
-  String ui_home_order = "live,network,time";
+  String ui_home_order = "live,network";
   String ui_home_hide  = "";
 };
 

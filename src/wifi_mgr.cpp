@@ -34,6 +34,7 @@ static constexpr uint32_t BOOT_GRACE_MS     = 15000;  // nach Boot erstmal Ruhe 
 static constexpr uint32_t RETRY_INTERVAL_MS = 10000;  // Reconnect alle 10s
 static constexpr uint8_t  MAX_FAILS         = 3;
 static constexpr uint32_t PORTAL_RETRY_MS   = 30000;  // STA-Retry bei aktivem Portal nur alle 30s
+static constexpr uint32_t OFFLINE_GRACE_MS  = 180000; // Setup-AP erst nach 3 min ohne WLAN (z.B. Router-Neustart)
 
 // ===== State =====
 static String storedSSID;
@@ -48,6 +49,7 @@ static uint32_t lastTryMs = 0;
 static uint8_t  fails = 0;
 static uint32_t lastBeginMs = 0;
 static uint32_t lastPortalRetryMs = 0;
+static uint32_t lastConnectedMs = 0;
 
 // /wifi-Zeitfenster im Heimnetz (0 = geschlossen)
 static uint32_t wifiUiUntilMs = 0;
@@ -418,6 +420,7 @@ void wifiMgrLoop() {
 
   // Connected -> Portal aus (außer der Nutzer hat das /wifi-Fenster bewusst geöffnet)
   if (WiFi.status() == WL_CONNECTED) {
+    lastConnectedMs = millis();
     fails = 0;
     lastBeginMs = 0;
     lastPortalRetryMs = 0;
@@ -458,8 +461,9 @@ void wifiMgrLoop() {
 
     WiFi.reconnect();
 
-    if (fails >= MAX_FAILS) {
-      Serial.println("Reconnect mehrfach fehlgeschlagen -> Setup AP aktivieren (AP+STA, WPA2)");
+    const uint32_t offlineSince = lastConnectedMs ? lastConnectedMs : bootMs;
+    if (fails >= MAX_FAILS && (now - offlineSince) >= OFFLINE_GRACE_MS) {
+      Serial.println("WLAN seit 3 min nicht erreichbar -> Setup AP aktivieren (AP+STA, WPA2)");
       startApKeepStaPortal();
     }
     return;
