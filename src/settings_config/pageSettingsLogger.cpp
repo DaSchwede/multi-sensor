@@ -39,9 +39,8 @@ void pageSettingsLogger(WebServer &server) {
     const bool wantRescan = server.hasArg("sd_rescan");
 
   if (wantRescan) {
-    // hier: SD refresh / remount / infos neu lesen
-    // z.B. loggerRescan(); (bauen wir gleich)
-    msg = "SD aktualisiert.";
+    loggerRescan();
+    msg = loggerSdOk() ? "SD neu eingelesen." : "Keine SD-Karte gefunden.";
   } else {
     // normales Speichern
     cfg->log_enabled = server.hasArg("log_enabled");
@@ -90,6 +89,7 @@ void pageSettingsLogger(WebServer &server) {
   int usedPct = (sd.ok && sd.total) ? (int)lround((double)sd.used * 100.0 / (double)sd.total) : 0;
 
   String html = pagesHeaderAuth("Einstellungen – Logger", "/settings/logger");
+  html += pagesTitle("Logger", "Speicherung der Messwerte auf der SD-Karte: Intervall, Aufbewahrung und Werte.");
   settingsSendOkBadge(html, msg);
 
   html += "<form method='POST' action='/settings/logger'>";
@@ -185,4 +185,4 @@ void pageSettingsLogger(WebServer &server) {
   html += "</form>";
   html += pagesFooter();
   server.send(200, "text/html; charset=utf-8", html);
-}
+}

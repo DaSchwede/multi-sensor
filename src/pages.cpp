@@ -9,6 +9,8 @@
 #include "version.h"
 #include "ntp_time.h"
 #include <esp_heap_caps.h>
+#include "device_id.h"
+#include "html_util.h"
 
 
 // ============================================================================
@@ -123,12 +125,13 @@ std::vector<String> pagesSplitCsv(const String &csv) { return splitCsv(csv); }
 static String headerHtmlAuth(const String &title, const String &currentPath) {
   // Dropdown-Items (Einstellungen)
 std::vector<std::pair<String,String>> settingsItems = {
+  { "/settings/sensors", "Sensoren" },
   { "/settings/udp",   "UDP" },
   { "/settings/time",  "Zeit / NTP" },
   { "/settings/mqtt",  "MQTT" },
   { "/settings/logger", "Logger" },
   { "/settings/ui",    "Darstellung" },
-  { "/settings/wifi", "Wifi" },
+  { "/settings/wifi", "WLAN" },
   { "/settings/tools", "Tools" },
 };
   // Dropdown-Items (Info)
@@ -136,7 +139,6 @@ std::vector<std::pair<String,String>> infoItems = {
     { "/info",        "Übersicht" },
     { "/info/system", "Systeminfo" },
     { "/logger", "Logger" },
-    { "/info/time",   "Zeit / NTP" },
         // später erweiterbar:
     // { "/info/network", "Netzwerk" },
     // { "/info/sensor",  "Sensor" },
@@ -147,12 +149,15 @@ std::vector<std::pair<String,String>> infoItems = {
     "<!doctype html><html><head><meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
     "<link rel='stylesheet' href='/style.css'>"
+    "<link rel='stylesheet' href='/ui.css?v=" FW_VERSION "'>"
     "<script defer src='/script.js'></script>"
     "<link rel='icon' type='image/svg+xml' href='/favicon.svg'>"
     "<title>") + String(FW_NAME) + " - " + title + "</title>"
     "</head><body>"
     "<div class='topbar'><img src='/logo_name_weiss.svg' alt='Multi Sensors' class='logo'></div>"
-    "<div class='menubar'>"
+    "<div class='menubar has-toggle'>"
+      "<button type='button' class='nav-toggle' aria-label='Menü öffnen' "
+      "onclick=\"this.parentNode.classList.toggle('open')\">&#9776; Menü</button>"
       + navLink("/", "Startseite", currentPath)
       + navDrop("Info", "/info", currentPath, infoItems)
       + navDrop("Einstellungen", "/settings/udp", currentPath, settingsItems)
@@ -176,12 +181,13 @@ static String headerHtmlPublic(WebServer &server, const String &title, const Str
 };
 
   std::vector<std::pair<String,String>> settingsItems = {
+  { "/settings/sensors", "Sensoren" },
   { "/settings/udp",   "UDP" },
   { "/settings/time",  "Zeit / NTP" },
   { "/settings/mqtt",  "MQTT" },
   { "/settings/logger", "Logger" },
   { "/settings/ui",    "Darstellung" },
-  { "/settings/wifi", "Wifi" },
+  { "/settings/wifi", "WLAN" },
   { "/settings/tools", "Tools" },
 };
 
@@ -205,12 +211,15 @@ static String headerHtmlPublic(WebServer &server, const String &title, const Str
     "<!doctype html><html><head><meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
     "<link rel='stylesheet' href='/style.css'>"
+    "<link rel='stylesheet' href='/ui.css?v=" FW_VERSION "'>"
     "<script defer src='/script.js'></script>"
     "<link rel='icon' type='image/svg+xml' href='/favicon.svg'>"
     "<title>") + String(FW_NAME) + " - " + title + "</title>"
     "</head><body>"
     "<div class='topbar'>" + String(FW_NAME) + "</div>"
-    "<div class='menubar'>" + menu + "</div>"
+    "<div class='menubar has-toggle'>"
+      "<button type='button' class='nav-toggle' aria-label='Menü öffnen' "
+      "onclick=\"this.parentNode.classList.toggle('open')\">&#9776; Menü</button>" + menu + "</div>"
     "<div class='content'>";
 }
 
@@ -223,6 +232,16 @@ String pagesHeaderAuth(const String &title, const String &currentPath) { return 
 String pagesHeaderPublic(WebServer &server, const String &title, const String &currentPath) { return headerHtmlPublic(server, title, currentPath); }
 String pagesFooter() { return footerHtml(); }
 
+String pagesTitle(const String &title, const String &subtitle, const String &rightHtml) {
+  String h = "<div class='page-head'><div>";
+  h += "<h1 class='page-title'>" + title + "</h1>";
+  if (subtitle.length()) h += "<p class='page-sub'>" + subtitle + "</p>";
+  h += "</div>";
+  if (rightHtml.length()) h += "<div class='page-head-right'>" + rightHtml + "</div>";
+  h += "</div>";
+  return h;
+}
+
 // ============================================================================
 // Card builders (werden von pageInfo/pageRoot genutzt)
 // ============================================================================
@@ -232,11 +251,7 @@ String cardSystem() {
   h += "<tr><th>Firmware</th><td>" + String(FW_NAME) + "</td></tr>";
   h += "<tr><th>Version</th><td>" + String(FW_VERSION) + "</td></tr>";
   h += "<tr><th>Build</th><td>" + String(FW_DATE) + "</td></tr>";
-    uint32_t id = (uint32_t)(ESP.getEfuseMac() & 0xFFFFFFFF);
-      String chip = String(id, HEX);
-      chip.toUpperCase();
-      while (chip.length() < 8) chip = "0" + chip;
-  h += "<tr><th>Chip ID</th><td>" + chip + "</td></tr>";
+  h += "<tr><th>MAC</th><td>" + deviceMacHex() + "</td></tr>";
   h += "<tr><th>CPU</th><td>" + String(ESP.getCpuFreqMHz()) + " MHz</td></tr>";
   h += "<tr><th>Uptime</th><td>" + uptimeString() + "</td></tr>";
   h += "</table></div>";
@@ -247,7 +262,7 @@ String cardNetzwerk() {
   String h;
   h += "<div class='card'><h2>Netzwerk</h2><table class='tbl'>";
   h += "<tr><th>Status</th><td>" + String(WiFi.status() == WL_CONNECTED ? "Verbunden" : "Getrennt") + "</td></tr>";
-  h += "<tr><th>SSID</th><td>" + WiFi.SSID() + "</td></tr>";
+  h += "<tr><th>SSID</th><td>" + htmlEscape(WiFi.SSID()) + "</td></tr>";
   h += "<tr><th>IP</th><td>" + WiFi.localIP().toString() + "</td></tr>";
   h += "<tr><th>Gateway</th><td>" + WiFi.gatewayIP().toString() + "</td></tr>";
   h += "<tr><th>RSSI</th><td>" + String(WiFi.RSSI()) + " dBm</td></tr>";
@@ -324,9 +339,9 @@ String cardAktuelleEinstellungen() {
   if (!gCfg) {
     h += "<tr><th>Status</th><td>cfg fehlt</td></tr>";
   } else {
-    h += "<tr><th>Sensor-ID</th><td>" + gCfg->sensor_id + "</td></tr>";
+    h += "<tr><th>Sensor-ID</th><td>" + htmlEscape(gCfg->sensor_id) + "</td></tr>";
     h += "<tr><th>Intervall</th><td>" + String(gCfg->send_interval_ms) + " ms</td></tr>";
-    h += "<tr><th>Server IP</th><td>" + gCfg->server_udp_ip + "</td></tr>";
+    h += "<tr><th>Server IP</th><td>" + htmlEscape(gCfg->server_udp_ip) + "</td></tr>";
     h += "<tr><th>UDP Port</th><td>" + String(gCfg->server_udp_port) + "</td></tr>";
     h += "<tr><th>MQTT</th><td>" + String(gCfg->mqtt_enabled ? "An" : "Aus") + "</td></tr>";
   }

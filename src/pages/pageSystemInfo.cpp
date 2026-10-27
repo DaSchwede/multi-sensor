@@ -6,6 +6,8 @@
 #include "pages.h"
 #include "auth.h"
 #include "version.h"
+#include "device_id.h"
+#include "html_util.h"
 
 #include <esp_system.h>
 #include <esp_chip_info.h>
@@ -58,7 +60,7 @@ static String cardFirmware() {
   h += "<tr><th>ESP-IDF</th><td>" + String(esp_get_idf_version()) + "</td></tr>";
   h += "<tr><th>Reset Reason</th><td>" + resetReasonStr(esp_reset_reason()) + "</td></tr>";
   if (cfg) {
-    h += "<tr><th>Sensor-ID</th><td>" + cfg->sensor_id + "</td></tr>";
+    h += "<tr><th>Sensor-ID</th><td>" + htmlEscape(cfg->sensor_id) + "</td></tr>";
   }
   h += "<tr><th>Betriebszeit</th><td>" + pagesUptimeString() + "</td></tr>";
   h += "</table></div>";
@@ -69,10 +71,7 @@ static String cardHardware() {
   esp_chip_info_t info{};
   esp_chip_info(&info);
 
-  uint32_t id = (uint32_t)(ESP.getEfuseMac() & 0xFFFFFFFF);
-  String chip = String(id, HEX);
-  chip.toUpperCase();
-  while (chip.length() < 8) chip = "0" + chip;
+  const String chip = deviceMacHex();
 
   uint32_t flashBytes = ESP.getFlashChipSize();
 
@@ -83,7 +82,7 @@ static String cardHardware() {
 
   String h;
   h += "<div class='card'><h2>Hardwareinformationen</h2><table class='tbl'>";
-  h += "<tr><th>Chip-ID</th><td>" + chip + "</td></tr>";
+  h += "<tr><th>MAC</th><td>" + chip + "</td></tr>";
   h += "<tr><th>Kerne</th><td>" + String(info.cores) + "</td></tr>";
   h += "<tr><th>CPU-Frequenz</th><td>" + String(ESP.getCpuFreqMHz()) + " MHz</td></tr>";
   h += "<tr><th>CPU-Temperatur</th><td>" + (isnan(cpuTemp) ? String("—") : String(cpuTemp, 1) + " °C") + "</td></tr>";
@@ -95,15 +94,12 @@ static String cardHardware() {
 static String cardMemoryOverview() {
   // Heap
   uint32_t heapFree = ESP.getFreeHeap();
-  uint32_t heapMin  = ESP.getMinFreeHeap();
-  uint32_t heapMax  = heapFree + (heapMin > heapFree ? (heapMin - heapFree) : 0); // nur grobe Orientierung
 
   // LittleFS
   uint64_t fsTotal = 0, fsUsed = 0;
-  if (LittleFS.begin(true)) {
-    fsTotal = LittleFS.totalBytes();
-    fsUsed  = LittleFS.usedBytes();
-  }
+  // LittleFS ist seit dem Boot gemountet (kein begin(true) hier – das würde bei Fehler formatieren!)
+  fsTotal = LittleFS.totalBytes();
+  fsUsed  = LittleFS.usedBytes();
 
   // Sketch
   uint32_t sketchSize = ESP.getSketchSize();
@@ -115,19 +111,9 @@ static String cardMemoryOverview() {
     return (int)lround((double)used * 100.0 / (double)total);
   };
 
-  int heapUsedPct   = 0;
-  // Heap total kann man nicht exakt “gesamt” angeben, aber wir können “Max usage seit Start” über MinFree nähern:
-  // MaxUsed ≈ (CurrentFree + (CurrentFree-MinFree)?). Wir zeigen einfach “frei” + “min frei” im Detail unten.
-  // Für die Übersicht: Prozent = ( (freeHeap - minFreeHeap) / freeHeap?? ) ist unsinnig -> deshalb: nur Balken “frei”.
-  // -> Wir machen Balken “frei” (je mehr, desto besser) mit einer Schätzung:
-  heapUsedPct = 100; // fallback
-  // Wenn du lieber “frei” visualisieren willst:
-  int heapFreePct = 0;
-  if (heapFree + (heapFree - heapMin) > 0) {
-    uint32_t approxTotal = heapFree + (heapFree - heapMin);
-    heapFreePct = (int)lround((double)heapFree * 100.0 / (double)approxTotal);
-    heapUsedPct = 100 - heapFreePct;
-  }
+  const uint32_t heapTotal = heap_caps_get_total_size(MALLOC_CAP_8BIT);
+  const uint32_t heapUsed  = (heapTotal > heapFree) ? (heapTotal - heapFree) : 0;
+  const int heapUsedPct    = pct(heapUsed, heapTotal);
 
   int fsUsedPct     = pct(fsUsed, fsTotal);
   int sketchUsedPct = pct(sketchSize, sketchTotal);
@@ -141,8 +127,8 @@ static String cardMemoryOverview() {
   h += "<td><b>Heap</b></td>";
   h += "<td>" + progressBar(heapUsedPct) + "<div class='small mt-8'>" + String(heapUsedPct) + "%</div></td>";
   h += "<td>" + fmtBytes(heapFree) + "</td>";
-  h += "<td>" + fmtBytes((heapFree > heapMin) ? (heapFree - heapMin) : 0) + "</td>";
-  h += "<td>—</td>";
+  h += "<td>" + fmtBytes(heapUsed) + "</td>";
+  h += "<td>" + fmtBytes(heapTotal) + "</td>";
   h += "</tr>";
 
   h += "<tr>";
@@ -220,11 +206,8 @@ void pageSystemInfo(WebServer &server) {
 
   String html = pagesHeaderAuth("Info – Systeminfo", "/info/system");
 
-  // Headerzeile wie in deinen Screens (Titel + Refresh)
-  html += "<div style='display:flex; align-items:center; justify-content:space-between; gap:10px;'>";
-  html += "<h1 style='margin:0;'>Systeminformationen</h1>";
-  html += "<button class='icon-btn' type='button' title='Aktualisieren' onclick='location.reload()'>&#x21bb;</button>";
-  html += "</div>";
+  html += pagesTitle("Systeminformationen", "Firmware, Hardware, Speicher und Laufzeit.",
+                    "<button class='icon-btn' type='button' title='Aktualisieren' onclick='location.reload()'>&#x21bb;</button>");
 
   html += cardFirmware();
   html += cardHardware();

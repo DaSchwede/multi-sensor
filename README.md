@@ -47,20 +47,25 @@ und Dateisystem (LittleFS).
 - **SCD40** (I²C, 3.3 V)
 - Pullups für I²C (meist auf Breakout vorhanden)
 
-**I²C-Pins (Standard):**
-- SDA → D2
-- SCL → D1
+**I²C-Pins (ESP32-C3 SuperMini):**
+- SDA → GPIO 8
+- SCL → GPIO 9
+
+**SD-Karte (SPI, optional für Logging):**
+- CS → GPIO 10, SCK → GPIO 4, MISO → GPIO 5, MOSI → GPIO 6
 
 ---
 
 ## 🧪 Software / Toolchain
 
 - **PlatformIO**
-- **Framework:** Arduino (ESP8266 Core)
+- **Plattform:** espressif32@6.9.0 (Arduino-ESP32 2.0.17)
+- **Framework:** Arduino
 - **Libraries:**
   - ArduinoJson
-  - Adafruit BME280
-  - NTPClient
+  - Adafruit BME280 + Unified Sensor
+  - Sensirion I2C SCD4x 0.4.x
+  - PubSubClient
 
 ---
 

@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <WebServer.h>
+#include <vector>
 #include "settings.h"
 #include "bme280_sensor.h"
 #include "sensor_data.h"
@@ -12,14 +13,14 @@ void pagesInit(AppConfig &cfg, SensorData *liveData, uint32_t *lastReadMs, uint3
 // Pages
 void pageRoot(WebServer &server);
 void pageInfo(WebServer &server);
-void pageSettings(WebServer &server);
 void pageAbout(WebServer &server);
 void pageLicense(WebServer &server);
 
 // Backup/Restore/Reset
 void pageBackup(WebServer &server);
 void pageRestoreForm(WebServer &server);
-void pageRestoreUpload(WebServer &server);
+void pageRestoreUpload(WebServer &server);   // Upload-Daten (keine Antwort)
+void pageRestoreDone(WebServer &server);     // Antwort nach dem Upload
 void pageFactoryResetForm(WebServer &server);
 void pageFactoryResetDo(WebServer &server);
 
@@ -31,6 +32,7 @@ void pageSettingsLogger(WebServer &server);
 void pageSettingsUi(WebServer &server);
 void pageSettingsWifi(WebServer &server); 
 void pageSettingsTools(WebServer &server);
+void pageSettingsSensors(WebServer &server);
 
 // settings info
 void pageSystemInfo(WebServer &server);
@@ -42,11 +44,14 @@ void pageLogger(WebServer &server);
 void pageOtaForm(WebServer &server);        // Sicherheitsabfrage + Admin-Passwort
 void pageOtaPrepare(WebServer &server);     // prüft & "armed" Token
 void pageOtaUploadForm(WebServer &server);  // Upload-Form mit Progressbar
-void pageOtaUpload(WebServer &server);      // Upload-Handler
+void pageOtaUpload(WebServer &server);      // Upload-Daten (keine Antwort)
+void pageOtaDone(WebServer &server);        // Antwort nach dem Upload
 
 // API
 void apiLive(WebServer &server);
 void apiHistory(WebServer &server);
+void apiLogList(WebServer &server);       // Liste der Log-Dateien (JSON)
+void apiLogDownload(WebServer &server);   // einzelne CSV-Datei herunterladen
 
 // ===== Shared helpers (werden in pages.cpp definiert, von Subpages genutzt) =====
 AppConfig* pagesCfg();
@@ -57,6 +62,9 @@ uint32_t pagesLastSendMs();
 String pagesHeaderAuth(const String &title, const String &currentPath);                // requires auth menu
 String pagesHeaderPublic(WebServer &server, const String &title, const String &currentPath);
 String pagesFooter();
+
+// Seitenüberschrift mit Untertitel (optional rechts z.B. ein Button)
+String pagesTitle(const String &title, const String &subtitle, const String &rightHtml = "");
 
 String pagesUptimeString();
 String pagesLoadLicenseText();

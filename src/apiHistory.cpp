@@ -3,174 +3,131 @@
 #include <ArduinoJson.h>
 #include <SD.h>
 #include <time.h>
+#include <math.h>
+#include <memory>
+#include <vector>
+#include <algorithm>
 #include "logger.h"
 
 #include "settings_config/settings_common.h"
 
-// CSV Spaltennamen aus Logger
-static const char* COL_EPOCH = "epoch";
-static const char* COL_TEMP  = "temp_c";
-static const char* COL_HUM   = "hum_rh";
-static const char* COL_PRESS = "press_hpa";
-static const char* COL_CO2   = "co2_ppm";
+// Messwerte: Key in der API  <->  Spaltenname im CSV
+static const int NM = 4;
+static const char* KEYS[NM] = { "temp",   "hum",    "press",     "co2"     };
+static const char* COLS[NM] = { "temp_c", "hum_rh", "press_hpa", "co2_ppm" };
 
-static const char* metricToCol(const String& metricKey);
-static bool parseFloatField(const String& f, float& out);
-static void splitCsv(const String& s, String out[], int maxParts, int& n);
-static int  findColIndex(const String cols[], int n, const char* name);
-static bool looksLikeHeader(const String& line);
-static int  metricToIndexNoHeader(const String& metricKey);
+// max. Anzahl Punkte, die an den Browser gehen (RAM + Lesbarkeit)
+static const int MAX_BUCKETS = 240;
 
-
+static int keyIndex(const String &k) {
+  for (int i = 0; i < NM; i++) if (k == KEYS[i]) return i;
+  return -1;
+}
 
 static bool timeIsValid() {
-  time_t now = time(nullptr);
-  return (now > 1672531200);
+  return time(nullptr) > 1672531200;
 }
 
 static time_t localMidnight(time_t t) {
-  struct tm tmLocal{};
-  localtime_r(&t, &tmLocal);
-  tmLocal.tm_hour = 0;
-  tmLocal.tm_min  = 0;
-  tmLocal.tm_sec  = 0;
-  return mktime(&tmLocal); // lokale Mitternacht
+  struct tm lt {};
+  localtime_r(&t, &lt);
+  lt.tm_hour = 0; lt.tm_min = 0; lt.tm_sec = 0;
+  lt.tm_isdst = -1;
+  return mktime(&lt);
 }
 
-static time_t startOfTodayLocal() {
-  time_t now = time(nullptr);
-  struct tm t{};
-  localtime_r(&now, &t);
-  t.tm_hour = 0; t.tm_min = 0; t.tm_sec = 0;
-  return mktime(&t); // local 00:00
+static time_t addDaysMidnight(time_t midnight, int days) {
+  struct tm lt {};
+  localtime_r(&midnight, &lt);
+  lt.tm_mday += days;
+  lt.tm_hour = 0; lt.tm_min = 0; lt.tm_sec = 0;
+  lt.tm_isdst = -1;
+  return mktime(&lt);
 }
 
-static bool looksLikeHeader(const String& line){
-  return line.startsWith("epoch");
-}
-
-// wenn KEIN Header: feste Spaltenpositionen
-static int metricToIndexNoHeader(const String& metricKey){
-  // 0=epoch, 1=temp, 2=hum, 3=press, 4=co2
-  if (metricKey == "temp")  return 1;
-  if (metricKey == "hum")   return 2;
-  if (metricKey == "press") return 3;
-  if (metricKey == "co2")   return 4;
-  return -1;
-}
-
-static String dayStringLocalFromEpoch(time_t t) {
-  struct tm tmLocal{};
-  localtime_r(&t, &tmLocal);
-  char buf[16];
-  snprintf(buf, sizeof(buf), "%04d-%02d-%02d",
-           tmLocal.tm_year + 1900, tmLocal.tm_mon + 1, tmLocal.tm_mday);
+static String logPathForDay(time_t t) {
+  struct tm lt {};
+  localtime_r(&t, &lt);
+  char buf[24];
+  snprintf(buf, sizeof(buf), "/log/%04d-%02d-%02d.csv", lt.tm_year + 1900, lt.tm_mon + 1, lt.tm_mday);
   return String(buf);
 }
 
-static String monthStringLocalFromEpoch(time_t t) {
-  struct tm tmLocal{};
-  localtime_r(&t, &tmLocal);
-  char buf[8];
-  snprintf(buf, sizeof(buf), "%04d-%02d", tmLocal.tm_year + 1900, tmLocal.tm_mon + 1);
-  return String(buf);
-}
-
-static String logPathForDay(const String& day) {
-  return String("/log/") + day + ".csv";
-}
-
-static void splitCsv(const String& s, String out[], int maxParts, int& n) {
-  n = 0;
-  int start = 0;
-  while (n < maxParts) {
-    int comma = s.indexOf(',', start);
-    if (comma < 0) {
-      out[n] = s.substring(start);
-      out[n].trim();
-      n++;
-      break;
-    }
-    out[n] = s.substring(start, comma);
-    out[n].trim();
-    n++;
-    start = comma + 1;
+// Liest eine CSV-Zeile in Felder (ohne String-Kopien pro Feld)
+static int splitFields(char *line, char *fields[], int maxF) {
+  int n = 0;
+  char *p = line;
+  while (n < maxF) {
+    fields[n++] = p;
+    char *c = strchr(p, ',');
+    if (!c) break;
+    *c = 0;
+    p = c + 1;
   }
+  return n;
 }
 
-static int findColIndex(const String cols[], int n, const char* name) {
-  for (int i=0;i<n;i++) if (cols[i] == name) return i;
-  return -1;
-}
-
-static bool parseFloatField(const String& f, float& out) {
-  if (f.length() == 0) return false;
-
-  // toFloat() gibt 0 zurück auch bei Müll → wir lassen 0 aber zu.
-  // Für bessere Validierung könnte man isDigit/strtod nutzen, aber reicht hier.
-  out = f.toFloat();
-  return true;
-}
-
-static void calcDailyAvg(const String& path, const String& metricKey,
-                         double& sum, uint32_t& cnt) {
+// Ruft cb(epoch, values[NM], has[NM]) für jede Datenzeile der Datei auf.
+template <typename F>
+static void scanLogFile(const String &path, F cb) {
   if (!SD.exists(path)) return;
-
   File f = SD.open(path, FILE_READ);
   if (!f) return;
 
-  String first = f.readStringUntil('\n');
-  first.trim();
-  if (!first.length()) { f.close(); return; }
-
-  const int MAXC=16;
-  String cols[MAXC]; int n=0;
-  String parts[MAXC]; int pn=0;
-
-  bool hasHeader = looksLikeHeader(first);
-
   int idxEpoch = 0;
-  int idxVal   = -1;
+  int idx[NM] = { 1, 2, 3, 4 };   // Positionen ohne Header (altes Format)
+  bool first = true;
 
-  if (hasHeader) {
-    splitCsv(first, cols, MAXC, n);
-    idxEpoch = findColIndex(cols, n, COL_EPOCH);
-    const char* col = metricToCol(metricKey);
-    idxVal = col ? findColIndex(cols, n, col) : -1;
-    if (idxEpoch < 0 || idxVal < 0) { f.close(); return; }
-  } else {
-    idxEpoch = 0;
-    idxVal = metricToIndexNoHeader(metricKey);
-    // first ist Datenzeile
-    splitCsv(first, parts, MAXC, pn);
-    if (pn > idxVal) {
-      float v;
-      if (parseFloatField(parts[idxVal], v) && !isnan(v)) { sum += v; cnt++; }
-    }
-  }
+  char line[160];
+  char *fields[16];
 
   while (f.available()) {
-    String line = f.readStringUntil('\n');
-    line.trim();
-    if (!line.length()) continue;
+    size_t len = f.readBytesUntil('\n', line, sizeof(line) - 1);
+    line[len] = 0;
+    while (len && (line[len - 1] == '\r' || line[len - 1] == ' ')) line[--len] = 0;
+    if (!len) continue;
 
-    splitCsv(line, parts, MAXC, pn);
-    if (pn <= idxVal) continue;
+    if (first) {
+      first = false;
+      if (strncmp(line, "epoch", 5) == 0) {
+        // Header: Spalten per Name zuordnen (ältere Dateien hatten je nach Auswahl andere Spalten)
+        const int n = splitFields(line, fields, 16);
+        idxEpoch = -1;
+        for (int m = 0; m < NM; m++) idx[m] = -1;
+        for (int i = 0; i < n; i++) {
+          if (strcmp(fields[i], "epoch") == 0) idxEpoch = i;
+          for (int m = 0; m < NM; m++) if (strcmp(fields[i], COLS[m]) == 0) idx[m] = i;
+        }
+        if (idxEpoch < 0) break;
+        continue;
+      }
+    }
 
-    float v;
-    if (parseFloatField(parts[idxVal], v) && !isnan(v)) { sum += v; cnt++; }
+    const int n = splitFields(line, fields, 16);
+    if (n <= idxEpoch) continue;
+    const time_t ep = (time_t)strtoul(fields[idxEpoch], nullptr, 10);
+    if (ep < 1672531200) continue;   // unplausibel (z.B. abgeschnittene Zeile)
+
+    float vals[NM];
+    bool has[NM];
+    for (int m = 0; m < NM; m++) {
+      has[m] = false;
+      vals[m] = NAN;
+      if (idx[m] >= 0 && idx[m] < n && fields[idx[m]][0] != 0) {
+        char *end = nullptr;
+        const float v = strtof(fields[idx[m]], &end);
+        if (end != fields[idx[m]] && !isnan(v)) { vals[m] = v; has[m] = true; }
+      }
+    }
+    cb(ep, vals, has);
   }
-
   f.close();
 }
 
-static const char* metricToCol(const String& metricKey) {
-  if (metricKey == "temp")  return COL_TEMP;
-  if (metricKey == "hum")   return COL_HUM;
-  if (metricKey == "press") return COL_PRESS;
-  if (metricKey == "co2")   return COL_CO2;
-  return nullptr;
-}
+struct Bucket {
+  float    sum[NM];
+  uint16_t cnt[NM];
+};
 
 void apiHistory(WebServer &server) {
   AppConfig* cfg = settingsRequireCfgAndAuth(server);
@@ -189,145 +146,237 @@ void apiHistory(WebServer &server) {
   const String chart = server.hasArg("chart") ? server.arg("chart") : "line";
   const String metricsArg = server.hasArg("metrics") ? server.arg("metrics") : "temp,hum,press,co2";
 
-  // metrics split
-  String metrics[8]; int mn=0;
+  // gewünschte Messwerte
+  bool want[NM] = { false, false, false, false };
   {
-    int start=0;
-    while (mn < 8) {
+    int start = 0;
+    while (start <= (int)metricsArg.length()) {
       int c = metricsArg.indexOf(',', start);
-      if (c < 0) { metrics[mn++] = metricsArg.substring(start); break; }
-      metrics[mn++] = metricsArg.substring(start, c);
-      start = c+1;
+      String k = (c < 0) ? metricsArg.substring(start) : metricsArg.substring(start, c);
+      k.trim();
+      const int i = keyIndex(k);
+      if (i >= 0) want[i] = true;
+      if (c < 0) break;
+      start = c + 1;
     }
-    for (int i=0;i<mn;i++) metrics[i].trim();
   }
 
-  DynamicJsonDocument doc(18000);
-  doc["mode"] = (chart == "bar") ? "bar" : "line";
-  JsonArray labels = doc.createNestedArray("labels");
-  JsonObject series = doc.createNestedObject("series");
+  const time_t now = time(nullptr);
+  const time_t today = localMidnight(now);
 
-  time_t now = time(nullptr);
-
-  // ===== feste Zeitfenster (kein rolling über Tage) =====
+  // ===== Zeitfenster =====
+  bool dayMode = false;     // true: ein Balken/Punkt pro Tag (Tagesmittel)
   time_t tMin = 0;
+  uint32_t bucketSec = 60;
+  int nb = 0;
 
-  if (range == "1h") {
-    struct tm t{};
-    localtime_r(&now, &t);
-    t.tm_min = 0;
-    t.tm_sec = 0;
-    tMin = mktime(&t);
-  } else if (range == "12h") {
-    tMin = now - 12 * 3600;
-  } else if (range == "24h" || range == "today") {
-    tMin = startOfTodayLocal(); // 00:00 lokal
-  } else if (range == "7d" || range == "month") {
-    // TODO: deinen bestehenden Tagesmittel-Code hier wieder einsetzen
-    server.send(400, "application/json", "{\"error\":\"not_implemented_in_this_block\"}");
-    return;
+  if (range == "1h")            { tMin = now - 3600;      bucketSec = 60;  }
+  else if (range == "12h")      { tMin = now - 12 * 3600; bucketSec = 180; }
+  else if (range == "24h")      { tMin = now - 24 * 3600; bucketSec = 360; }
+  else if (range == "today")    { tMin = today;           bucketSec = 360; }
+  else if (range == "7d")       { dayMode = true; tMin = addDaysMidnight(today, -6); }
+  else if (range == "month")    {
+    struct tm lt {};
+    localtime_r(&now, &lt);
+    dayMode = true;
+    tMin = addDaysMidnight(today, -(lt.tm_mday - 1));
   } else {
     server.send(400, "application/json", "{\"error\":\"bad_range\"}");
     return;
   }
 
-  // ===== series arrays anlegen =====
-  String metricKeys[8];
-  JsonArray seriesArrs[8];
-  int metricCount = 0;
+  if (dayMode) {
+    for (time_t d = tMin; d <= today && nb < 31; d = addDaysMidnight(d, 1)) nb++;
+  } else {
+    nb = (int)((now - tMin) / bucketSec) + 1;
+  }
+  if (nb > MAX_BUCKETS) nb = MAX_BUCKETS;
+  if (nb < 1) nb = 1;
 
-  for (int i=0;i<mn;i++){
-    const String& key = metrics[i];
-    if (!metricToCol(key)) continue; // nur bekannte
-    metricKeys[metricCount] = key;
-    seriesArrs[metricCount] = series.createNestedArray(key);
-    metricCount++;
+  std::unique_ptr<Bucket[]> buckets(new (std::nothrow) Bucket[nb]);
+  if (!buckets) {
+    server.send(500, "application/json", "{\"error\":\"out_of_memory\"}");
+    return;
+  }
+  memset(buckets.get(), 0, sizeof(Bucket) * nb);
+
+  // ===== Dateien lesen: alle Tage, die das Zeitfenster berührt =====
+  int dayIdx = 0;
+  for (time_t d = localMidnight(tMin); d <= today; d = addDaysMidnight(d, 1), dayIdx++) {
+    const int thisDay = dayIdx;
+    scanLogFile(logPathForDay(d), [&](time_t ep, const float *vals, const bool *has) {
+      int b;
+      if (dayMode) {
+        b = thisDay;
+      } else {
+        if (ep < tMin || ep > now) return;
+        b = (int)((ep - tMin) / bucketSec);
+      }
+      if (b < 0 || b >= nb) return;
+      for (int m = 0; m < NM; m++) {
+        if (!want[m] || !has[m]) continue;
+        buckets[b].sum[m] += vals[m];
+        if (buckets[b].cnt[m] < 65535) buckets[b].cnt[m]++;
+      }
+    });
   }
 
-  // ===== Datei: nur heute =====
-  const String day = dayStringLocalFromEpoch(now);
-  const String path = logPathForDay(day);
+  // ===== JSON bauen =====
+  JsonDocument doc;
+  doc["mode"] = (chart == "bar") ? "bar" : "line";
+  doc["range"] = range;
+  JsonArray labels = doc["labels"].to<JsonArray>();
+  JsonObject series = doc["series"].to<JsonObject>();
+  JsonArray arr[NM];
+  for (int m = 0; m < NM; m++) if (want[m]) arr[m] = series[KEYS[m]].to<JsonArray>();
 
-  // ===== Datei lesen (header oder no-header) =====
-  auto readFile = [&](const String& p)->void {
-    if (!SD.exists(p)) return;
-    File f = SD.open(p, FILE_READ);
-    if (!f) return;
+  for (int b = 0; b < nb; b++) {
+    bool any = false;
+    for (int m = 0; m < NM; m++) if (want[m] && buckets[b].cnt[m]) any = true;
+    if (!any && !dayMode) continue;   // leere Zeitabschnitte weglassen, leere Tage als Lücke zeigen
 
-    String first = f.readStringUntil('\n');
-    first.trim();
-    if (!first.length()) { f.close(); return; }
-
-    const int MAXC=16;
-    String cols[MAXC]; int n=0;
-    String parts[MAXC]; int pn=0;
-
-    bool hasHeader = looksLikeHeader(first);
-
-    int idxEpoch = 0;
-    int idx[8];
-    for(int i=0;i<metricCount;i++) idx[i] = -1;
-
-    if (hasHeader) {
-      splitCsv(first, cols, MAXC, n);
-      idxEpoch = findColIndex(cols, n, COL_EPOCH);
-      if (idxEpoch < 0) { f.close(); return; }
-
-      for(int i=0;i<metricCount;i++){
-        const char* col = metricToCol(metricKeys[i]);
-        idx[i] = col ? findColIndex(cols, n, col) : -1;
-      }
+    char lb[8];
+    struct tm lt {};
+    if (dayMode) {
+      const time_t d = addDaysMidnight(tMin, b);
+      localtime_r(&d, &lt);
+      snprintf(lb, sizeof(lb), "%02d.%02d", lt.tm_mday, lt.tm_mon + 1);
     } else {
-      // kein header → feste positionen
-      idxEpoch = 0;
-      for(int i=0;i<metricCount;i++) idx[i] = metricToIndexNoHeader(metricKeys[i]);
+      const time_t t = tMin + (time_t)b * bucketSec;
+      localtime_r(&t, &lt);
+      snprintf(lb, sizeof(lb), "%02d:%02d", lt.tm_hour, lt.tm_min);
+    }
+    labels.add(lb);
 
-      // first ist daten → mitverarbeiten
-      splitCsv(first, parts, MAXC, pn);
-      if (pn > idxEpoch) {
-        time_t ep = (time_t)parts[idxEpoch].toInt();
-        if (ep >= tMin) {
-          struct tm tl{}; localtime_r(&ep, &tl);
-          char lb[6]; snprintf(lb, sizeof(lb), "%02d:%02d", tl.tm_hour, tl.tm_min);
-          labels.add(String(lb));
-
-          for(int i=0;i<metricCount;i++){
-            float v;
-            if (idx[i] >= 0 && pn > idx[i] && parseFloatField(parts[idx[i]], v)) seriesArrs[i].add(v);
-            else seriesArrs[i].add(nullptr);
-          }
-        }
+    for (int m = 0; m < NM; m++) {
+      if (!want[m]) continue;
+      if (buckets[b].cnt[m]) {
+        const double avg = buckets[b].sum[m] / buckets[b].cnt[m];
+        arr[m].add(round(avg * 100.0) / 100.0);
+      } else {
+        arr[m].add(nullptr);
       }
     }
-
-    while (f.available()) {
-      String line = f.readStringUntil('\n');
-      line.trim();
-      if (!line.length()) continue;
-
-      splitCsv(line, parts, MAXC, pn);
-      if (pn <= idxEpoch) continue;
-
-      time_t ep = (time_t)parts[idxEpoch].toInt();
-      if (ep < tMin) continue;
-
-      struct tm tl{}; localtime_r(&ep, &tl);
-      char lb[6]; snprintf(lb, sizeof(lb), "%02d:%02d", tl.tm_hour, tl.tm_min);
-      labels.add(String(lb));
-
-      for(int i=0;i<metricCount;i++){
-        float v;
-        if (idx[i] >= 0 && pn > idx[i] && parseFloatField(parts[idx[i]], v)) seriesArrs[i].add(v);
-        else seriesArrs[i].add(nullptr);
-      }
-    }
-
-    f.close();
-  };
-
-  readFile(path);
+  }
 
   String out;
   serializeJson(doc, out);
   server.send(200, "application/json", out);
+}
+
+// ===== Log-Dateien: Liste + Download =====
+
+// Erlaubt nur "JJJJ-MM-TT.csv" (verhindert Pfad-Tricks wie "../")
+static bool validLogName(const String &n) {
+  if (n.length() != 14 || !n.endsWith(".csv")) return false;
+  for (int i = 0; i < 10; i++) {
+    const char c = n[i];
+    if (i == 4 || i == 7) { if (c != '-') return false; }
+    else if (c < '0' || c > '9') return false;
+  }
+  return true;
+}
+
+void apiLogList(WebServer &server) {
+  AppConfig* cfg = settingsRequireCfgAndAuth(server);
+  if (!cfg) return;
+  if (!loggerSdOk()) {
+    server.send(503, "application/json", "{\"error\":\"sd_not_ready\"}");
+    return;
+  }
+
+  struct Entry { String name; uint32_t size; };
+  std::vector<Entry> files;
+  File dir = SD.open("/log");
+  if (dir) {
+    for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
+      if (!f.isDirectory()) {
+        String n = String(f.name());
+        const int slash = n.lastIndexOf('/');
+        if (slash >= 0) n = n.substring(slash + 1);
+        if (validLogName(n)) files.push_back({ n, (uint32_t)f.size() });
+      }
+      f.close();
+    }
+    dir.close();
+  }
+  // neueste zuerst
+  std::sort(files.begin(), files.end(), [](const Entry &a, const Entry &b){ return a.name > b.name; });
+
+  String out = "{\"files\":[";
+  for (size_t i = 0; i < files.size(); i++) {
+    if (i) out += ",";
+    out += "{\"name\":\"" + files[i].name + "\",\"size\":" + String(files[i].size) + "}";
+  }
+  out += "]}";
+  server.send(200, "application/json", out);
+}
+
+void apiLogDownload(WebServer &server) {
+  AppConfig* cfg = settingsRequireCfgAndAuth(server);
+  if (!cfg) return;
+
+  const String name = server.arg("f");
+  if (!validLogName(name)) {
+    server.send(400, "text/plain", "Ungültiger Dateiname");
+    return;
+  }
+  if (!loggerSdOk()) {
+    server.send(503, "text/plain", "SD-Karte nicht bereit");
+    return;
+  }
+  const String path = "/log/" + name;
+  File f = SD.open(path, FILE_READ);
+  if (!f) {
+    server.send(404, "text/plain", "Datei nicht gefunden");
+    return;
+  }
+  const bool excel = (server.arg("fmt") == "excel");
+  if (!excel) {
+    // Original-Datei (Unix-Zeit, Komma-getrennt) – gut für Skripte/Auswertungen
+    server.sendHeader("Content-Disposition", "attachment; filename=\"multi-sensor_" + name + "\"");
+    server.streamFile(f, "text/csv");
+    f.close();
+    return;
+  }
+  f.close();
+
+  // Excel (deutsch): lesbare Ortszeit, Semikolon, Dezimalkomma, UTF-8 mit BOM
+  String outName = name;
+  outName.replace(".csv", "_excel.csv");
+  server.sendHeader("Content-Disposition", "attachment; filename=\"multi-sensor_" + outName + "\"");
+  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server.send(200, "text/csv; charset=utf-8", "");
+
+  String buf;
+  buf.reserve(1200);
+  buf += "\xEF\xBB\xBF";   // BOM, damit Excel UTF-8 (°, ₂) richtig erkennt
+  buf += "Zeit;Temperatur (°C);Luftfeuchte (%);Luftdruck (hPa);CO2 (ppm)\r\n";
+
+  auto num = [](float v, int dec) -> String {
+    if (isnan(v)) return String();
+    String t = String(v, dec);
+    t.replace(".", ",");
+    return t;
+  };
+  static const int DECIMALS[NM] = { 2, 2, 2, 0 };
+
+  scanLogFile(path, [&](time_t ep, const float *vals, const bool *has) {
+    struct tm lt {};
+    localtime_r(&ep, &lt);
+    char ts[24];
+    strftime(ts, sizeof(ts), "%d.%m.%Y %H:%M:%S", &lt);
+    buf += ts;
+    for (int m = 0; m < NM; m++) {
+      buf += ";";
+      if (has[m]) buf += num(vals[m], DECIMALS[m]);
+    }
+    buf += "\r\n";
+    if (buf.length() > 1000) {
+      server.sendContent(buf);
+      buf = "";
+    }
+  });
+  if (buf.length()) server.sendContent(buf);
+  server.sendContent("");   // Ende der chunked Antwort
 }

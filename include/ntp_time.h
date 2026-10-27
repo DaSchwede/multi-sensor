@@ -2,26 +2,30 @@
 #include <Arduino.h>
 #include "settings.h"
 
-// Startet NTP (mit Server + TZ/DST aus cfg)
+// Setzt nur die Zeitzone (TZ/tzset) aus cfg – ohne Netzwerk, z.B. direkt beim Boot
+void ntpApplyTimezone(const AppConfig &cfg);
+
+// Startet SNTP (ESP-IDF, läuft im Hintergrund) mit Server + Zeitzone aus cfg.
+// Darf nach Einstellungsänderungen erneut aufgerufen werden.
 void ntpBegin(const AppConfig &cfg);
 
-// Muss regelmäßig im loop() aufgerufen werden
+// Für Kompatibilität – SNTP synchronisiert selbstständig im Hintergrund
 void ntpLoop();
 
-// true, wenn wir schon eine plausible Zeit haben
+// true, wenn die Systemzeit plausibel ist (> 2023-01-01)
 bool ntpIsValid();
 
-// UTC epoch (vom NTP)
+// UTC epoch (0 wenn noch keine Zeit)
 unsigned long ntpEpochUtc();
 
-// Epoch seconds (UTC+offset bereits eingerechnet wie in NTPClient)
+// Epoch inkl. lokalem Offset (0 wenn noch keine Zeit)
 unsigned long ntpEpochLocal(const AppConfig &cfg);
 
-// "HH:MM:SS"
-// Strings
-String ntpTimeString(const AppConfig &cfg);
-String ntpDateTimeString(const AppConfig &cfg);
+// Strings in lokaler Zeit
+String ntpTimeString(const AppConfig &cfg);       // "HH:MM:SS"
+String ntpDateTimeString(const AppConfig &cfg);   // "YYYY-MM-DD HH:MM:SS"
 
 // Info
-bool ntpDstActiveBerlin(unsigned long utcEpoch);
-int ntpLocalOffsetSeconds(const AppConfig &cfg, unsigned long utcEpoch);;
+bool ntpDstActive();                                    // Sommerzeit gerade aktiv?
+int  ntpLocalOffsetSeconds(const AppConfig &cfg, unsigned long utcEpoch);
+String ntpPosixTz(const AppConfig &cfg);                // verwendeter POSIX-TZ-String

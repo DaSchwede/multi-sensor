@@ -18,6 +18,7 @@ void pageSettingsUi(WebServer &server) {
   }
 
   String html = pagesHeaderAuth("Einstellungen – Darstellung", "/settings/ui");
+  html += pagesTitle("Darstellung", "Welche Karten auf Start- und Info-Seite erscheinen und in welcher Reihenfolge.");
   settingsSendOkBadge(html, msg);
 
   html += "<form method='POST'>";

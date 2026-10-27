@@ -3,6 +3,9 @@
 #include "pages.h"
 #include "settings_config/settings_common.h"
 #include <math.h>
+#include "html_util.h"
+#include "mqtt_client.h"
+#include "send_udp.h"
 
 // Bits (müssen identisch zu send_udp.cpp / settings sein)
 static constexpr uint32_t UF_TEMP  = (1u << 0);
@@ -34,10 +37,27 @@ void pageSettingsUdp(WebServer &server) {
   if (server.method() == HTTP_POST) {
     cfg->udp_enabled = server.hasArg("udp_enabled");
 
-    if (server.hasArg("server_udp_ip"))   cfg->server_udp_ip = server.arg("server_udp_ip");
-    if (server.hasArg("server_udp_port")) cfg->server_udp_port = toIntSafe(server.arg("server_udp_port"), cfg->server_udp_port);
-    if (server.hasArg("send_interval_ms")) cfg->send_interval_ms = (uint32_t)toIntSafe(server.arg("send_interval_ms"), (int)cfg->send_interval_ms);
-    if (server.hasArg("sensor_id"))       cfg->sensor_id = server.arg("sensor_id");
+    const String oldSensorId = cfg->sensor_id;
+
+    if (server.hasArg("server_udp_ip")) {
+      cfg->server_udp_ip = server.arg("server_udp_ip");
+      cfg->server_udp_ip.trim();
+    }
+    if (server.hasArg("server_udp_port")) {
+      int port = toIntSafe(server.arg("server_udp_port"), cfg->server_udp_port);
+      if (port >= 1 && port <= 65535) cfg->server_udp_port = (uint16_t)port;
+    }
+    if (server.hasArg("send_interval_ms")) {
+      long v = toIntSafe(server.arg("send_interval_ms"), (int)cfg->send_interval_ms);
+      if (v < 1000) v = 1000;            // min. 1 s (schützt Broker/Miniserver)
+      if (v > 3600000L) v = 3600000L;    // max. 1 h
+      cfg->send_interval_ms = (uint32_t)v;
+    }
+    if (server.hasArg("sensor_id")) {
+      cfg->sensor_id = server.arg("sensor_id");
+      cfg->sensor_id.trim();
+      settingsApplyDeviceDefaults(*cfg);  // leer -> Default aus MAC
+    }
 
     uint32_t mask = 0;
     if (server.hasArg("f_temp"))  mask |= UF_TEMP;
@@ -46,7 +66,13 @@ void pageSettingsUdp(WebServer &server) {
     if (server.hasArg("f_co2"))   mask |= UF_CO2;
     cfg->udp_fields_mask = mask;
 
+    if (server.hasArg("udp_format")) {
+      const int f = toIntSafe(server.arg("udp_format"), cfg->udp_format);
+      cfg->udp_format = (f == 1) ? 1 : 0;
+    }
+
     saveConfig(*cfg);
+    if (cfg->sensor_id != oldSensorId) mqttBegin(*cfg);  // MQTT-Topics hängen an der Sensor-ID
     msg = "Gespeichert.";
   }
 
@@ -59,6 +85,7 @@ void pageSettingsUdp(WebServer &server) {
   const bool aCo2   = live ? isAvailFloat(live->co2_ppm)       : true;
 
   String html = pagesHeaderAuth("Einstellungen – UDP", "/settings/udp");
+  html += pagesTitle("UDP", "Messwerte per UDP an Loxone oder andere Systeme senden.");
   settingsSendOkBadge(html, msg);
 
   html += "<form method='POST'>";
@@ -72,13 +99,25 @@ void pageSettingsUdp(WebServer &server) {
           "</label></div>";
 
   html += "<div class='form-row'><label>Server IP / Host</label>"
-          "<input name='server_udp_ip' value='" + cfg->server_udp_ip + "'></div>";
+          "<input name='server_udp_ip' value='" + htmlEscape(cfg->server_udp_ip) + "'></div>";
   html += "<div class='form-row'><label>UDP Port</label>"
-          "<input name='server_udp_port' type='number' value='" + String(cfg->server_udp_port) + "'></div>";
+          "<input name='server_udp_port' type='number' min='1' max='65535' value='" + String(cfg->server_udp_port) + "'></div>";
   html += "<div class='form-row'><label>Sendeintervall (ms)</label>"
-          "<input name='send_interval_ms' type='number' value='" + String(cfg->send_interval_ms) + "'></div>";
+          "<input name='send_interval_ms' type='number' min='1000' max='3600000' step='100' value='" + String(cfg->send_interval_ms) + "'></div>";
   html += "<div class='form-row'><label>Sensor ID</label>"
-          "<input name='sensor_id' value='" + cfg->sensor_id + "'></div>";
+          "<input name='sensor_id' maxlength='40' value='" + htmlEscape(cfg->sensor_id) + "'></div>";
+  html += "<div class='hint'>Die Sensor-ID wird auch für MQTT-Topics und Home Assistant verwendet. Leer = Standard aus der MAC-Adresse.</div>";
+
+  html += "<div class='form-row'><label>Format</label><select name='udp_format' id='udp_format'>"
+          "<option value='0'" + String(cfg->udp_format == 1 ? "" : " selected") + ">Text (CSV): id=…;ts=…;t=…</option>"
+          "<option value='1'" + String(cfg->udp_format == 1 ? " selected" : "") + ">JSON: {\"id\":…,\"t\":…}</option>"
+          "</select></div>";
+  if (live) {
+    html += "<div class='hint'><b>So sieht das Paket gerade aus:</b><br><code style='word-break:break-all'>" +
+            htmlEscape(udpBuildPayload(*cfg, *live)) + "</code></div>";
+  }
+  html += "<div class='hint'><b>Text (CSV)</b> ist einfach in Loxone auszuwerten (Befehlserkennung z.B. <code>t=\\v</code>). "
+          "<b>JSON</b> passt für Node-RED, ioBroker oder eigene Skripte. Fehlende Werte: im Text weggelassen, im JSON <code>null</code>.</div>";
 
   html += "</div>";
 

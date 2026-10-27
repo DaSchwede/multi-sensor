@@ -7,3 +7,6 @@
 
 
 void SendUDP(const AppConfig &cfg, const SensorData &d);
+
+// Baut das UDP-Paket genau so, wie es gesendet wird (für die Vorschau in der Weboberfläche)
+String udpBuildPayload(const AppConfig &cfg, const SensorData &d);

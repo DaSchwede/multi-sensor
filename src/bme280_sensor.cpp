@@ -6,6 +6,7 @@ static Adafruit_BME280 bme;
 static bool ok = false;
 
 // ===== I2C Scan MUSS VOR bmeBegin() stehen =====
+#if defined(DEBUG_I2C_SCAN)
 static void i2cScan() {
   Serial.println("I2C scan...");
   int found = 0;
@@ -19,6 +20,7 @@ static void i2cScan() {
   }
   Serial.printf("I2C scan done, found %d device(s)\n", found);
 }
+#endif
 
 static uint8_t readChipId(uint8_t addr) {
   Wire.beginTransmission(addr);

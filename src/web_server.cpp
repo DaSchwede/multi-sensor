@@ -5,6 +5,21 @@
 #include "sensors_ctrl.h"
 #include "settings_config/settings_common.h"
 #include "logger.h"
+#include "ui_css.h"
+#include "ui_logger_js.h"
+
+// Pfad der aufrufenden Seite aus dem Referer (nur lokale Pfade, sonst Fallback)
+static String backPathFromReferer(WebServer &server, const char *fallback) {
+  String ref = server.header("Referer");
+  const int scheme = ref.indexOf("://");
+  if (scheme < 0) return fallback;
+  const int slash = ref.indexOf('/', scheme + 3);
+  if (slash < 0) return "/";
+  String path = ref.substring(slash);
+  if (!path.startsWith("/") || path.startsWith("//")) return fallback;
+  if (path.indexOf('\r') >= 0 || path.indexOf('\n') >= 0) return fallback;
+  return path;
+}
 
 void webServerBegin(WebServer &server,
                     AppConfig &cfg,
@@ -12,13 +27,20 @@ void webServerBegin(WebServer &server,
                     uint32_t *lastReadMs,
                     uint32_t *lastSendMs) {
 
-  Serial.println("style.css exists? " + String(LittleFS.exists("/style.css")));
-
   // pages bekommt Zugriff auf cfg/live/zeiten
   pagesInit(cfg, liveData, lastReadMs, lastSendMs);
 
   // Statische Dateien
   server.serveStatic("/style.css", LittleFS, "/style.css");
+  // Ergänzende Styles aus der Firmware (siehe include/ui_css.h)
+  server.on("/ui-logger.js", HTTP_GET, [&](){
+    server.sendHeader("Cache-Control", "max-age=300");
+    server.send_P(200, "application/javascript", UI_LOGGER_JS);
+  });
+  server.on("/ui.css", HTTP_GET, [&](){
+    server.sendHeader("Cache-Control", "max-age=300");
+    server.send_P(200, "text/css", UI_EXTRA_CSS);
+  });
   server.serveStatic("/script.js", LittleFS, "/script.js");
   server.serveStatic("/logger.js", LittleFS, "/logger.js");
   server.serveStatic("/wifi.js", LittleFS, "/wifi.js");
@@ -28,7 +50,7 @@ void webServerBegin(WebServer &server,
   server.serveStatic("/logo_name_gruen.svg", LittleFS, "/logo_name_gruen.svg");
 
       // Cookie-Header lesen können
-  static const char* headerKeys[] = { "Cookie" };
+  static const char* headerKeys[] = { "Cookie", "Referer" };
   server.collectHeaders(headerKeys, sizeof(headerKeys) / sizeof(headerKeys[0]));
 
 
@@ -41,11 +63,10 @@ void webServerBegin(WebServer &server,
     if (!c) return;
 
     // Rescan anstoßen
-    extern void requestSensorRescan(); // falls in main.cpp static ist: siehe Hinweis unten
-    requestSensorRescan();
+    requestSensorRescan();   // wird im loop() ausgeführt
 
-    // Redirect zurück (z.B. Tools)
-    server.sendHeader("Location", "/settings/tools?msg=rescan", true);
+    // Zurück auf die Seite, von der der Knopf gedrückt wurde
+    server.sendHeader("Location", backPathFromReferer(server, "/info"), true);
     server.send(302, "text/plain", "");
   });
   
@@ -65,6 +86,8 @@ void webServerBegin(WebServer &server,
   // API
   server.on("/api/live", HTTP_GET, [&](){ apiLive(server); });
   server.on("/api/history", HTTP_GET, [&](){ apiHistory(server); });
+  server.on("/api/logs", HTTP_GET, [&](){ apiLogList(server); });
+  server.on("/api/logs/download", HTTP_GET, [&](){ apiLogDownload(server); });
 
   // Seiten
   server.on("/", HTTP_GET,        [&](){ pageRoot(server); });
@@ -99,6 +122,10 @@ void webServerBegin(WebServer &server,
   server.on("/settings/wifi",  HTTP_POST, [&](){ pageSettingsWifi(server); });
 
   server.on("/settings/tools", HTTP_GET, [&](){ pageSettingsTools(server); });
+  server.on("/settings/tools", HTTP_POST, [&](){ pageSettingsTools(server); });
+
+  server.on("/settings/sensors", HTTP_GET, [&](){ pageSettingsSensors(server); });
+  server.on("/settings/sensors", HTTP_POST, [&](){ pageSettingsSensors(server); });
 
   server.on("/about", HTTP_GET,   [&](){ pageAbout(server); });
   server.on("/backup", HTTP_GET,  [&](){ pageBackup(server); });
@@ -106,8 +133,8 @@ void webServerBegin(WebServer &server,
   // Restore Upload (GET Form + POST Upload)
   server.on("/restore", HTTP_GET, [&](){ pageRestoreForm(server); });
   server.on("/restore", HTTP_POST,
-    [&](){ /* Antwort kommt im Upload-End */ },
-    [&](){ pageRestoreUpload(server); }
+    [&](){ pageRestoreDone(server); },      // Antwort nach dem Upload
+    [&](){ pageRestoreUpload(server); }     // Upload-Daten
   );
 
   server.on("/ota", HTTP_GET,  [&](){ pageOtaForm(server); });
@@ -116,8 +143,8 @@ void webServerBegin(WebServer &server,
   server.on("/ota_upload", HTTP_GET,  [&](){ pageOtaUploadForm(server); });
 
   server.on("/ota_upload", HTTP_POST,
-    [&](){ /* Antwort kommt im Upload END */ },
-    [&](){ pageOtaUpload(server); }
+    [&](){ pageOtaDone(server); },          // Antwort nach dem Upload
+    [&](){ pageOtaUpload(server); }         // Upload-Daten
   );
 
   server.on("/factory_reset", HTTP_GET,  [&](){ pageFactoryResetForm(server); });

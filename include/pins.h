@@ -17,4 +17,4 @@
 // Optional (wenn du nicht die Default-SPI Pins nutzt):
 #define PIN_SD_SCK  4
 #define PIN_SD_MISO 5
-#define PIN_SD_MOSI 6
+#define PIN_SD_MOSI 6

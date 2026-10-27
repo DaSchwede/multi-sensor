@@ -35,7 +35,7 @@ struct AppConfig {
   String server_udp_ip = "192.168.1.10";
   uint16_t server_udp_port = 7000;
   uint32_t send_interval_ms = 5000;
-  String sensor_id = "Sensor-<chipid>";
+  String sensor_id = "";          // leer -> beim Start "Sensor-<MAC>" 
 
   // MQTT
   bool   mqtt_enabled        = false;
@@ -49,6 +49,10 @@ struct AppConfig {
   uint8_t mqtt_qos           = 0;           // 0..2
   uint16_t mqtt_keepalive    = 30;          // Sekunden
   bool   mqtt_clean_session  = true;
+
+  // Sensoren
+  float bme_temp_offset_c = 0.0f;   // Korrektur BME280-Temperatur (Eigenerwärmung), z.B. -1.5
+  bool  scd_asc_enabled   = true;   // SCD40 automatische Selbstkalibrierung
 
   // Logger
   bool     log_enabled        = false;
@@ -87,8 +91,24 @@ struct AppConfig {
 };
 
 
-// String defaultAdminHash();
 bool settingsBegin();
+
+// Lädt /config.json (bei Defekt automatisch /config.json.bak)
 bool loadConfig(AppConfig &cfg);
+
+// Speichert atomar: erst .tmp schreiben, dann umbenennen (alte Version bleibt als .bak)
 bool saveConfig(const AppConfig &cfg);
+
+// Liest eine Konfigurationsdatei in cfg ein (fehlende Keys behalten ihren Wert).
+// Gibt false zurück, wenn die Datei kein gültiges Konfigurations-JSON ist.
+bool configLoadFromFile(const char *path, AppConfig &cfg);
+
+// Prüft, ob eine Datei eine plausible Konfiguration ist (JSON-Objekt mit Admin-Hash)
+bool configFileLooksValid(const char *path);
+
+// Löscht config.json + Backup (Factory Reset)
+void configRemoveAll();
+
+// Gerätespezifische Defaults setzen (Sensor-ID, MQTT-Client-ID). true = geändert
+bool settingsApplyDeviceDefaults(AppConfig &cfg);
 

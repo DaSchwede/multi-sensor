@@ -48,23 +48,13 @@ static void ensureLogDir() {
   if (!SD.exists("/log")) SD.mkdir("/log");
 }
 
-static void writeHeaderIfNeeded(const AppConfig& cfg, File& f) {
+// Feste Spalten: Header bleibt gleich, auch wenn die Auswahl tagsüber geändert wird.
+// Nicht ausgewählte / nicht verfügbare Werte bleiben leer.
+static const char* LOG_HEADER = "epoch,temp_c,hum_rh,press_hpa,co2_ppm\n";
+
+static void writeHeaderIfNeeded(File& f) {
   if (g_headerWritten) return;
-
-  // falls Datei schon Inhalt hat -> Header als vorhanden ansehen
-  if (f.size() > 0) {
-    g_headerWritten = true;
-    return;
-  }
-
-  String h = "epoch";
-  if (cfg.log_metric_mask & LOG_TEMP)  h += ",temp_c";
-  if (cfg.log_metric_mask & LOG_HUM)   h += ",hum_rh";
-  if (cfg.log_metric_mask & LOG_PRESS) h += ",press_hpa";
-  if (cfg.log_metric_mask & LOG_CO2)   h += ",co2_ppm";
-  h += "\n";
-
-  f.print(h);
+  if (f.size() == 0) f.print(LOG_HEADER);
   g_headerWritten = true;
 }
 
@@ -81,27 +71,20 @@ static void appendLine(const AppConfig& cfg, const SensorData& d) {
   ensureLogDir();
   const String path = logPathForDay(day);
 
-  Serial.println("[logger] try write: " + path);
-  Serial.println("[logger] /log exists? " + String(SD.exists("/log")));
-
   File f = SD.open(path, FILE_APPEND);
-    if (!f) {
+  if (!f) {
     Serial.println("[logger] SD.open FAILED: " + path);
     return;
   }
-  Serial.println("[logger] SD.open OK");
 
-
-  writeHeaderIfNeeded(cfg, f);
+  writeHeaderIfNeeded(f);
 
   time_t now = time(nullptr);
   String line = String((uint32_t)now);
 
   auto addVal = [&](bool enabled, float v) {
-    if (!enabled) return;
     line += ",";
-    if (!isnan(v)) line += String(v, 2);
-    // wenn NAN -> leer lassen (",")
+    if (enabled && !isnan(v)) line += String(v, 2);  // sonst leer lassen
   };
 
   addVal(cfg.log_metric_mask & LOG_TEMP,  d.temperature_c);
@@ -233,33 +216,21 @@ void loggerBegin(const AppConfig& cfg) {
 }
 
 
+// Geschrieben wird an festen Uhrzeit-Rastern (z.B. bei 30 min: xx:00 und xx:30),
+// beim ersten gültigen Zeitpunkt nach dem Start zusätzlich sofort einmal.
+static int64_t g_lastSlot = -1;
+
 void loggerLoop(const AppConfig& cfg, const SensorData& data) {
-  static bool wasTimeValid = false;
-  bool tv = timeIsValid();
-  if (tv && !wasTimeValid) {
-  // Zeit wurde gerade gültig -> sofort einmal schreiben
-  wasTimeValid = true;
-  retentionCleanup(cfg);
-  appendLine(cfg, data);
-  g_lastLogMs = millis();
-  return;
-}
-if (!tv) { wasTimeValid = false; return; }
+  if (!cfg.log_enabled || !g_sd_ok) return;
+  if (!timeIsValid()) return;
 
-  static uint32_t dbg=0;
-  if (millis() - dbg > 10000) {
-    dbg = millis();
-      Serial.printf("[logger] enabled=%d sd=%d interval=%u timeValid=%d\n",
-        cfg.log_enabled, g_sd_ok, cfg.log_interval_min, timeIsValid());
-  }
+  const uint32_t intervalSec = (uint32_t)cfg.log_interval_min * 60ul;
+  if (intervalSec == 0) return;
 
-  if (!cfg.log_enabled) return;
-  if (!g_sd_ok) return;
-
-  const uint32_t intervalMs = (uint32_t)cfg.log_interval_min * 60ul * 1000ul;
-  if (intervalMs == 0) return;
-
-  if ((uint32_t)(millis() - g_lastLogMs) < intervalMs) return;
+  const time_t now = time(nullptr);
+  const int64_t slot = (int64_t)now / (int64_t)intervalSec;
+  if (slot == g_lastSlot) return;
+  g_lastSlot = slot;
   g_lastLogMs = millis();
 
   retentionCleanup(cfg);
@@ -274,8 +245,10 @@ void loggerForceOnce(const AppConfig& cfg, const SensorData& data) {
   retentionCleanup(cfg);
   appendLine(cfg, data);
 
-  // Intervall-Timer neu setzen, damit nicht direkt nochmal geloggt wird
+  // aktuelles Raster als erledigt markieren, damit nicht direkt nochmal geloggt wird
   g_lastLogMs = millis();
+  const uint32_t intervalSec = (uint32_t)cfg.log_interval_min * 60ul;
+  if (intervalSec) g_lastSlot = (int64_t)time(nullptr) / (int64_t)intervalSec;
 }
 
 void loggerRescan(){

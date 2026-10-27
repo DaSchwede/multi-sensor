@@ -19,6 +19,7 @@ void pageInfo(WebServer &server) {
   if (!requireAuth(server, *cfg)) return;
 
   String html = pagesHeaderAuth("Info", "/info");
+  html += pagesTitle("Übersicht", "Systemzustand, Netzwerk, Sensoren und Speicher auf einen Blick.");
 
   auto order = pagesSplitCsv(cfg->ui_info_order);
 

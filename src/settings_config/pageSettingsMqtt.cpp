@@ -2,6 +2,8 @@
 #include <WebServer.h>
 #include "pages.h"
 #include "settings_config/settings_common.h"
+#include "mqtt_client.h"
+#include "html_util.h"
 
 // Hinweis: Diese Seite erwartet folgende Felder in AppConfig:
 //   bool   mqtt_enabled;
@@ -114,12 +116,21 @@ void pageSettingsMqtt(WebServer &server) {
     }
     cfg->mqtt_ha_retain = server.hasArg("mqtt_ha_retain");
 
+    // Welche Werte publizieren
+    uint32_t mask = 0;
+    if (server.hasArg("p_temp"))  mask |= MQTT_PUB_TEMP;
+    if (server.hasArg("p_hum"))   mask |= MQTT_PUB_HUM;
+    if (server.hasArg("p_press")) mask |= MQTT_PUB_PRESS;
+    if (server.hasArg("p_co2"))   mask |= MQTT_PUB_CO2;
+    cfg->mqtt_pub_mask = mask;
 
     saveConfig(*cfg);
-    msg = "Gespeichert.";
+    mqttBegin(*cfg);   // neue Einstellungen sofort übernehmen (ohne Neustart)
+    msg = "Gespeichert und übernommen.";
   }
 
   String html = pagesHeaderAuth("Einstellungen – MQTT", "/settings/mqtt");
+  html += pagesTitle("MQTT", "Verbindung zum Broker, Home Assistant Discovery, Last Will und TLS.");
   settingsSendOkBadge(html, msg);
 
   html += "<form method='POST' autocomplete='off'>";
@@ -166,48 +177,58 @@ void pageSettingsMqtt(WebServer &server) {
   // Card: Broker
   html += "<div class='card' data-requires='mqtt'><h2>MQTT-Broker</h2>";
   html += "<div class='form-row'><label>Host / IP</label>"
-          "<input name='mqtt_host' placeholder='z.B. 192.168.1.10 oder broker.local' value='" + cfg->mqtt_host + "'></div>";
+          "<input name='mqtt_host' placeholder='z.B. 192.168.1.10 oder broker.local' value='" + htmlEscape(cfg->mqtt_host) + "'></div>";
   html += "<div class='form-row'><label>Port</label>"
           "<input name='mqtt_port' type='number' min='1' max='65535' value='" + String(cfg->mqtt_port) + "'></div>";
   html += "<div class='form-row'><label>Client ID</label>"
-          "<input name='mqtt_client_id' placeholder='z.B. multi-sensor-01' value='" + cfg->mqtt_client_id + "'></div>";
+          "<input name='mqtt_client_id' placeholder='z.B. multi-sensor-01' value='" + htmlEscape(cfg->mqtt_client_id) + "'></div>";
   html += "<div class='form-row'><label>Benutzer</label>"
-          "<input name='mqtt_user' value='" + cfg->mqtt_user + "'></div>";
+          "<input name='mqtt_user' value='" + htmlEscape(cfg->mqtt_user) + "'></div>";
   html += "<div class='form-row'><label>Passwort</label>"
           "<input name='mqtt_pass' type='password' placeholder='leer lassen = unverändert'></div>";
   html += "<div class='form-row'>"
           "<label><input type='checkbox' name='mqtt_pass_clear'> Passwort löschen</label>"
           "</div>";
   html += "<div class='form-row'><label>Topic Base</label>"
-          "<input name='mqtt_topic_base' placeholder='z.B. multisensor/wohnzimmer' value='" + cfg->mqtt_topic_base + "'></div>";
-  html += "<div class='hint'>Beispiel-Publish: <code>" + cfg->mqtt_topic_base + "/temperature</code></div>";
+          "<input name='mqtt_topic_base' placeholder='z.B. multisensor/wohnzimmer' value='" + htmlEscape(cfg->mqtt_topic_base) + "'></div>";
+  html += "<div class='hint'>Topics: <code>" + htmlEscape(mqttTopicFor(*cfg, "temperature")) + "</code> usw. "
+          "(Topic Base / Sensor-ID / Wert). Die Sensor-ID stellst du unter UDP ein.</div>";
   html += "<div class='form-row'>"
           "<label><input type='checkbox' name='mqtt_clean_session' " + String(cfg->mqtt_clean_session ? "checked" : "") + "> Clean Session</label>"
           "</div>";
   html += "<div class='form-row'>"
           "<label><input type='checkbox' name='mqtt_retain' " + String(cfg->mqtt_retain ? "checked" : "") + "> Retain (für Publishes)</label>"
           "</div>";
-  // QoS als Select
-  html += "<div class='form-row'><label>QoS</label><select name='mqtt_qos'>";
-  for (int q = 0; q <= 2; q++) {
-    html += "<option value='" + String(q) + "' " + String(cfg->mqtt_qos == q ? "selected" : "") + ">" + String(q) + "</option>";
-  }
-  html += "</select></div>";
-
   html += "<div class='form-row'><label>Keepalive (Sek.)</label>"
           "<input name='mqtt_keepalive' type='number' min='5' max='3600' value='" + String(cfg->mqtt_keepalive) + "'></div>";
   html += "</div>";
 
+  // Card: Werte
+  {
+    const uint32_t m = cfg->mqtt_pub_mask;
+    auto pick = [&](const char* name, uint32_t bit, const char* label){
+      html += "<div class='pick-row'><label><input type='checkbox' name='" + String(name) + "' " +
+              String((m & bit) ? "checked" : "") + "> " + label + "</label></div>";
+    };
+    html += "<div class='card' data-requires='mqtt'><h2>Zu sendende Werte</h2>";
+    pick("p_temp",  MQTT_PUB_TEMP,  "Temperatur (°C)");
+    pick("p_hum",   MQTT_PUB_HUM,   "Luftfeuchte (%)");
+    pick("p_press", MQTT_PUB_PRESS, "Luftdruck (hPa)");
+    pick("p_co2",   MQTT_PUB_CO2,   "CO₂ (ppm)");
+    html += "<div class='hint'>Werte ohne gültige Messung werden nicht gesendet.</div>";
+    html += "</div>";
+  }
+
   html += "<div class='card' data-requires='mqtt,lwt'><h2>Last Will (LWT)</h2>";
 
   html += "<div class='form-row'><label>Status Topic</label>"
-        "<input name='mqtt_lwt_topic' value='" + cfg->mqtt_lwt_topic + "'></div>";
+        "<input name='mqtt_lwt_topic' value='" + htmlEscape(cfg->mqtt_lwt_topic) + "'></div>";
 
   html += "<div class='form-row'><label>Payload Online</label>"
-        "<input name='mqtt_lwt_online' value='" + cfg->mqtt_lwt_online + "'></div>";
+        "<input name='mqtt_lwt_online' value='" + htmlEscape(cfg->mqtt_lwt_online) + "'></div>";
 
   html += "<div class='form-row'><label>Payload Offline</label>"
-        "<input name='mqtt_lwt_offline' value='" + cfg->mqtt_lwt_offline + "'></div>";
+        "<input name='mqtt_lwt_offline' value='" + htmlEscape(cfg->mqtt_lwt_offline) + "'></div>";
 
   html += "<div class='form-row'><label>QoS</label>"
         "<select name='mqtt_lwt_qos'>"
@@ -239,14 +260,14 @@ void pageSettingsMqtt(WebServer &server) {
 
   html += "<div class='form-row'><label>CA Zertifikat (PEM)</label>"
         "<textarea name='mqtt_tls_ca' rows='6' placeholder='-----BEGIN CERTIFICATE-----\n...'>"
-        + cfg->mqtt_tls_ca +
+        + htmlEscape(cfg->mqtt_tls_ca) +
         "</textarea></div>";
 
   html += "</div>";
 
   html += "<div class='card' data-requires='mqtt,ha'><h2>Home Assistant Discovery</h2>";
   html += "<div class='form-row'><label>Prefix Topic</label>"
-          "<input name='mqtt_ha_prefix' placeholder='homeassistant' value='" + cfg->mqtt_ha_prefix + "'></div>";
+          "<input name='mqtt_ha_prefix' placeholder='homeassistant' value='" + htmlEscape(cfg->mqtt_ha_prefix) + "'></div>";
   html += "<div class='form-row'>"
           "<label>Retain für Discovery</label>"
           "<label class='switch'>"

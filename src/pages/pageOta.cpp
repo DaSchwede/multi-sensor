@@ -5,6 +5,7 @@
 #include "pages.h"
 #include "auth.h"
 #include "crypto_utils.h"
+#include <esp_system.h>
 
 static String gOtaToken;
 static uint32_t gOtaTokenAtMs = 0;
@@ -17,10 +18,16 @@ static String humanSize(size_t b){
 }
 
 static String mkToken(){
-  uint32_t id = (uint32_t)(ESP.getEfuseMac() & 0xFFFFFFFF);
-  String t = String(id, HEX); t.toUpperCase();
-  return t + "-" + String(millis(), HEX);
+  // 128 Bit aus dem Hardware-Zufallsgenerator
+  char buf[33];
+  for (int i = 0; i < 4; i++) snprintf(buf + i * 8, 9, "%08x", (unsigned)esp_random());
+  return String(buf);
 }
+
+// Zustand des laufenden Uploads (Upload-Handler sendet nichts, Antwort kommt in pageOtaDone)
+static bool   gOtaAccepted = false;
+static bool   gOtaError    = false;
+static String gOtaErrMsg;
 
 static bool tokenValid(WebServer &server){
   // Token per Query: /ota_upload?token=...
@@ -49,9 +56,9 @@ void pageOtaForm(WebServer &server){
   if (!requireAuth(server, *cfg)) return;
 
   size_t freeSketch = ESP.getFreeSketchSpace();
-  size_t maxSketchSpace = (freeSketch - 0x1000) & 0xFFFFF000;
+  size_t maxSketchSpace = (freeSketch > 0x1000) ? ((freeSketch - 0x1000) & 0xFFFFF000) : 0;
 
-  String html = pagesHeaderAuth("OTA Update", "/settings");
+  String html = pagesHeaderAuth("OTA Update", "/settings/tools");
 
   html += "<div class='card'><h2>Firmware Update (WebOTA)</h2>";
   html += "<p class='small'>Aus Sicherheitsgründen musst du die Aktion bestätigen und dein Admin-Passwort eingeben.</p>";
@@ -76,7 +83,7 @@ void pageOtaForm(WebServer &server){
 
   html += "<div class='actions'>"
           "<button class='btn-primary' type='submit'>Weiter zum Upload</button>"
-          "<a class='btn btn-secondary' href='/settings'>Abbrechen</a>"
+          "<a class='btn btn-secondary' href='/settings/tools'>Abbrechen</a>"
           "</div>";
 
   html += "</form>";
@@ -102,13 +109,14 @@ void pageOtaPrepare(WebServer &server){
   }
 
   String pass = server.arg("admin_pass");
-  if (!pass.length() || sha1Hex(pass) != cfg->admin_pass_hash) {
+  String pwErr;
+  if (!authCheckAdminPassword(*cfg, pass, pwErr)) {
     String html = pagesHeaderAuth("OTA Update", "/settings");
     html += "<div class='card'><h2>Update gesperrt</h2>";
-    html += "<p class='badge badge-bad badge-inline'>Admin-Passwort ist falsch.</p>";
+    html += "<p class='badge badge-bad badge-inline'>" + pwErr + "</p>";
     html += "<div class='actions mt-14'>"
             "<a class='btn btn-secondary' href='/ota'>Zurück</a>"
-            "<a class='btn btn-secondary' href='/settings'>Einstellungen</a>"
+            "<a class='btn btn-secondary' href='/settings/tools'>Tools</a>"
             "</div>";
     html += "</div>";
     html += pagesFooter();
@@ -170,74 +178,89 @@ void pageOtaUploadForm(WebServer &server){
 }
 
 // ------------------------------------------------------------------
-// 4) /ota_upload POST (Upload handler -> Update)
+// 4) /ota_upload POST – Upload-Daten (keine Antwort hier!)
 // ------------------------------------------------------------------
+static void otaFail(const String &msg) {
+  if (!gOtaError) {
+    gOtaError = true;
+    gOtaErrMsg = msg;
+    Serial.println("OTA: " + msg);
+  }
+  if (Update.isRunning()) Update.abort();
+}
+
 void pageOtaUpload(WebServer &server){
-  AppConfig* cfg = pagesCfg();
-  if (!cfg) { return; }
-  if (!requireAuth(server, *cfg)) return;
-
-  // Token bei jedem Status prüfen (sonst Upload ignorieren)
-  if (!tokenValid(server)) {
-    if (Update.isRunning()) {
-    Update.end(false);  // beendet mit Fehler
-  }
-  return;
-  }
-
   HTTPUpload& up = server.upload();
 
   if (up.status == UPLOAD_FILE_START){
-    size_t freeSketch = ESP.getFreeSketchSpace();
-    size_t maxSketchSpace = (freeSketch - 0x1000) & 0xFFFFF000;
+    AppConfig* cfg = pagesCfg();
+    gOtaError = false;
+    gOtaErrMsg = "";
+    gOtaAccepted = cfg && isAuthenticated(server) && tokenValid(server);
+    if (!gOtaAccepted) return;
 
-    if (!Update.begin(maxSketchSpace, U_FLASH)) {
-      Serial.printf("OTA begin failed. Error=%u\n", (unsigned)Update.getError());
-      Update.printError(Serial);
+    if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
+      otaFail("Update.begin fehlgeschlagen (" + updateErrorText() + ")");
     } else {
       Serial.println("OTA begin OK");
     }
   }
   else if (up.status == UPLOAD_FILE_WRITE){
-    if (Update.isRunning()) {
-      size_t written = Update.write(up.buf, up.currentSize);
-      if (written != up.currentSize) {
-        Serial.printf("OTA write mismatch: %u/%u\n", (unsigned)written, (unsigned)up.currentSize);
-      }
+    if (!gOtaAccepted || gOtaError) return;
+    if (Update.write(up.buf, up.currentSize) != up.currentSize) {
+      otaFail("Schreibfehler (" + updateErrorText() + ")");
     }
   }
   else if (up.status == UPLOAD_FILE_END){
-    bool ok = false;
-    if (Update.isRunning()) ok = Update.end(true);
-
-    // Token verbrauchen (one-shot)
-    gOtaToken = "";
-
-    if (!ok) {
-      String err = String("OTA fehlgeschlagen: ") + updateErrorText();
-
-      String html = pagesHeaderAuth("OTA Update", "/settings");
-      html += "<div class='card'><h2>Update fehlgeschlagen</h2>";
-      html += "<p class='badge badge-bad badge-inline'>" + err + "</p>";
-      html += "<div class='actions mt-14'>"
-              "<a class='btn btn-secondary' href='/ota'>Zurück</a>"
-              "<a class='btn btn-secondary' href='/settings'>Einstellungen</a>"
-              "</div>";
-      html += "</div>";
-      html += pagesFooter();
-
-      server.send(200, "text/html; charset=utf-8", html);
-      return;
+    if (!gOtaAccepted || gOtaError) return;
+    if (!Update.end(true)) {
+      otaFail("Abschluss fehlgeschlagen (" + updateErrorText() + ")");
+    } else {
+      Serial.printf("OTA fertig: %u Bytes\n", (unsigned)up.totalSize);
     }
+  }
+  else if (up.status == UPLOAD_FILE_ABORTED){
+    if (gOtaAccepted) otaFail("Upload abgebrochen");
+  }
+}
 
-    String html = pagesHeaderAuth("OTA Update", "/settings");
-    html += "<div class='card'><h2>Update erfolgreich</h2>";
-    html += "<p class='badge badge-ok badge-inline'>Firmware wurde aktualisiert. Neustart…</p>";
+// ------------------------------------------------------------------
+// 5) /ota_upload POST – Antwort nach dem Upload
+// ------------------------------------------------------------------
+void pageOtaDone(WebServer &server){
+  AppConfig* cfg = pagesCfg();
+  if (!cfg) { server.send(500, "text/plain", "cfg missing"); return; }
+  if (!requireAuth(server, *cfg)) return;
+
+  // Token ist one-shot
+  gOtaToken = "";
+
+  const bool ok = gOtaAccepted && !gOtaError && Update.isFinished();
+
+  String html = pagesHeaderAuth("OTA Update", "/settings/tools");
+  if (!ok) {
+    String err = !gOtaAccepted ? String("Upload-Freigabe ungültig oder abgelaufen (max. 2 Minuten). Bitte erneut starten.")
+                               : String("OTA fehlgeschlagen: ") + (gOtaErrMsg.length() ? gOtaErrMsg : updateErrorText());
+    html += "<div class='card'><h2>Update fehlgeschlagen</h2>";
+    html += "<p class='badge badge-bad badge-inline'>" + err + "</p>";
+    html += "<div class='actions mt-14'>"
+            "<a class='btn btn-secondary' href='/ota'>Zurück</a>"
+            "<a class='btn btn-secondary' href='/settings/tools'>Tools</a>"
+            "</div>";
     html += "</div>";
     html += pagesFooter();
-
     server.send(200, "text/html; charset=utf-8", html);
-    delay(500);
-    ESP.restart();
+    return;
   }
+
+  html += "<div class='card'><h2>Update erfolgreich</h2>";
+  html += "<p class='badge badge-ok badge-inline'>Firmware wurde aktualisiert. Neustart…</p>";
+  html += "<p class='small'>Die Seite lädt in ca. 15 Sekunden neu.</p>";
+  html += "<script>setTimeout(function(){location.href='/';},15000);</script>";
+  html += "</div>";
+  html += pagesFooter();
+
+  server.send(200, "text/html; charset=utf-8", html);
+  delay(500);
+  ESP.restart();
 }

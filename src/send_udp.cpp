@@ -7,8 +7,6 @@
 
 static WiFiUDP udp;
 
-static bool dnsLocked = false;
-
 static uint32_t wifiStableSinceMs = 0;
 static constexpr uint32_t UDP_NET_STABLE_MS = 8000; // 8 Sekunden
 
@@ -57,11 +55,13 @@ static String udpPayloadJson(const AppConfig& cfg, const SensorData& d, unsigned
   return s;
 }
 
-// --- Zieladresse cachen (wie bei dir) ---
+// --- Zieladresse cachen ---
 static IPAddress cachedIp;
 static String cachedHost;
 static uint32_t lastResolveMs = 0;
-static const uint32_t RESOLVE_INTERVAL_MS = 30000; // alle 30s max. neu auflösen
+static bool resolvedOnce = false;
+static const uint32_t RESOLVE_INTERVAL_MS = 300000; // erfolgreiches Ergebnis 5 min nutzen
+static const uint32_t RESOLVE_RETRY_MS    = 60000;  // nach Fehlschlag max. 1x pro Minute neu versuchen
 
 static bool resolveTarget(const String& hostOrIp, IPAddress &out) {
   IPAddress ip;
@@ -71,32 +71,43 @@ static bool resolveTarget(const String& hostOrIp, IPAddress &out) {
   }
 
   const uint32_t now = millis();
-  if (hostOrIp == cachedHost && cachedIp != IPAddress() && (now - lastResolveMs) < RESOLVE_INTERVAL_MS) {
+  const bool sameHost = (hostOrIp == cachedHost) && resolvedOnce;
+  const bool haveIp   = sameHost && cachedIp != IPAddress();
+
+  if (haveIp && (now - lastResolveMs) < RESOLVE_INTERVAL_MS) {
     out = cachedIp;
     return true;
   }
-
-  if ((now - lastResolveMs) < RESOLVE_INTERVAL_MS && hostOrIp != cachedHost) {
-    return false;
+  if (sameHost && !haveIp && (now - lastResolveMs) < RESOLVE_RETRY_MS) {
+    return false; // kürzlich fehlgeschlagen -> DNS nicht im Sekundentakt blockieren
   }
 
   lastResolveMs = now;
+  resolvedOnce = true;
 
   IPAddress resolved;
-  if (!dnsLocked && WiFi.hostByName(hostOrIp.c_str(), resolved)) {
+  if (WiFi.hostByName(hostOrIp.c_str(), resolved) && resolved != IPAddress()) {
     cachedHost = hostOrIp;
     cachedIp = resolved;
     out = resolved;
     return true;
   }
 
-  // nach erstem Lock: NUR IP benutzen
-  if (cachedIp != IPAddress()) {
-   out = cachedIp;
-   return true;
+  // DNS gerade nicht erreichbar: alte IP weiterverwenden, falls vorhanden
+  if (haveIp) {
+    out = cachedIp;
+    return true;
   }
 
+  cachedHost = hostOrIp;
+  cachedIp = IPAddress();
   return false;
+}
+
+String udpBuildPayload(const AppConfig& cfg, const SensorData& d) {
+  unsigned long ts = ntpEpochUtc();
+  if (ts == 0) ts = millis() / 1000;
+  return (cfg.udp_format == 1) ? udpPayloadJson(cfg, d, ts) : udpPayloadCsv(cfg, d, ts);
 }
 
 void SendUDP(const AppConfig& cfg, const SensorData& d) {
@@ -119,12 +130,6 @@ void SendUDP(const AppConfig& cfg, const SensorData& d) {
 
   if (millis() - wifiStableSinceMs < UDP_NET_STABLE_MS) {
     return; // noch nicht stabil genug
-  }
-
-  // DNS nur EINMAL nach stabilem Connect erlauben
-  if (!dnsLocked) {
-    dnsLocked = true;
-    lastResolveMs = 0; // erzwingt 1x resolve
   }
 
   // Timestamp

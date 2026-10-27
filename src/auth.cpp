@@ -1,16 +1,75 @@
 #include "auth.h"
 #include "crypto_utils.h"
+#include "version.h"
 #include <esp_system.h>
 
 static const char* COOKIE_NAME = "LOXSESS";
-static String sessionToken; // sehr simpel (RAM). Nach Reboot neu login.
+
+// ===== Sitzungen (RAM, nach Neustart neu anmelden) =====
+// Mehrere gleichzeitig, damit z.B. Handy und PC parallel angemeldet bleiben.
+struct Session { String token; uint32_t lastUseMs = 0; };
+static const int MAX_SESSIONS = 4;
+static const uint32_t SESSION_IDLE_MS = 24UL * 3600UL * 1000UL;   // 24 h ohne Nutzung -> abgelaufen
+static Session sessions[MAX_SESSIONS];
+
+// ===== Bremse gegen Durchprobieren von Passwörtern =====
+// Ab dem 3. Fehlversuch wachsende Sperre: 5 s, 10 s, 20 s ... max. 5 min
+static uint8_t  failCount = 0;
+static uint32_t lockUntilMs = 0;
+
+static uint32_t lockRemainingMs() {
+  if (!lockUntilMs) return 0;
+  const int32_t d = (int32_t)(lockUntilMs - millis());
+  if (d <= 0) { lockUntilMs = 0; return 0; }
+  return (uint32_t)d;
+}
+
+static void registerFail() {
+  if (failCount < 255) failCount++;
+  if (failCount >= 3) {
+    const uint8_t shift = (failCount - 3 > 6) ? 6 : (failCount - 3);
+    uint32_t sec = 5UL << shift;
+    if (sec > 300) sec = 300;
+    lockUntilMs = millis() + sec * 1000UL;
+    if (!lockUntilMs) lockUntilMs = 1;
+    Serial.printf("Login: %u Fehlversuche, Sperre %lu s\n", failCount, (unsigned long)sec);
+  }
+}
+
+static void registerSuccess() {
+  failCount = 0;
+  lockUntilMs = 0;
+}
+
+static String cookieToken(WebServer &server) {
+  if (!server.hasHeader("Cookie")) return String();
+  String cookie = server.header("Cookie");
+  int idx = cookie.indexOf(String(COOKIE_NAME) + "=");
+  if (idx < 0) return String();
+  String value = cookie.substring(idx + strlen(COOKIE_NAME) + 1);
+  int end = value.indexOf(';');
+  if (end >= 0) value = value.substring(0, end);
+  value.trim();
+  return value;
+}
+
+static void addSession(const String &token) {
+  // freien oder ältesten Platz nehmen
+  int slot = 0;
+  for (int i = 0; i < MAX_SESSIONS; i++) {
+    if (!sessions[i].token.length()) { slot = i; break; }
+    if (sessions[i].lastUseMs < sessions[slot].lastUseMs) slot = i;
+  }
+  sessions[slot].token = token;
+  sessions[slot].lastUseMs = millis();
+}
 
 
 static String randomToken() {
-  uint64_t mac = ESP.getEfuseMac();
-  uint32_t low = (uint32_t)(mac & 0xFFFFFFFF);
-  uint32_t r = (uint32_t)esp_random();
-  return String(low, HEX) + "-" + String(millis(), HEX) + "-" + String(r, HEX);
+  // 128 Bit aus dem Hardware-Zufallsgenerator
+  char buf[33];
+  for (int i = 0; i < 4; i++) snprintf(buf + i * 8, 9, "%08x", (unsigned)esp_random());
+  return String(buf);
 }
 
 static String uiHeader(const String& title, bool showLogout = false) {
@@ -19,6 +78,7 @@ static String uiHeader(const String& title, bool showLogout = false) {
     "<meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
     "<link rel='stylesheet' href='/style.css'>"
+    "<link rel='stylesheet' href='/ui.css?v=" FW_VERSION "'>"
     "<link rel='icon' type='image/svg+xml' href='/favicon.svg'>"
     "<script defer src='/script.js'></script>"
     "<title>"+ title + "</title>"
@@ -54,15 +114,56 @@ void authAttach(WebServer &server, AppConfig &cfg) {
 }
 
 bool isAuthenticated(WebServer &server) {
-  if (!server.hasHeader("Cookie")) return false;
-  String cookie = server.header("Cookie");
-  int idx = cookie.indexOf(String(COOKIE_NAME) + "=");
-  if (idx < 0) return false;
-  String value = cookie.substring(idx + strlen(COOKIE_NAME) + 1);
-  int end = value.indexOf(';');
-  if (end >= 0) value = value.substring(0, end);
-  value.trim();
-  return (value.length() > 0 && value == sessionToken);
+  const String value = cookieToken(server);
+  if (value.length() != 32) return false;
+  const uint32_t now = millis();
+  for (int i = 0; i < MAX_SESSIONS; i++) {
+    Session &s = sessions[i];
+    if (!s.token.length()) continue;
+    if (now - s.lastUseMs > SESSION_IDLE_MS) { s.token = ""; continue; }   // abgelaufen
+    if (s.token == value) { s.lastUseMs = now; return true; }
+  }
+  return false;
+}
+
+void authKeepOnlyCurrentSession(WebServer &server) {
+  const String value = cookieToken(server);
+  for (int i = 0; i < MAX_SESSIONS; i++) {
+    if (sessions[i].token.length() && sessions[i].token != value) sessions[i].token = "";
+  }
+}
+
+bool authCheckAdminPassword(AppConfig &cfg, const String &password, String &errOut) {
+  const uint32_t wait = lockRemainingMs();
+  if (wait) {
+    errOut = "Zu viele Fehlversuche – bitte noch " + String((wait + 999) / 1000) + " s warten.";
+    return false;
+  }
+  if (!password.length() || !passwordVerify(password, cfg.admin_pass_hash)) {
+    registerFail();
+    errOut = "Passwort falsch.";
+    return false;
+  }
+  registerSuccess();
+
+  // alten SHA-1-Hash still auf PBKDF2 umstellen
+  if (passwordHashIsLegacy(cfg.admin_pass_hash) && !passwordIsDefault(cfg)) {
+    const String h = passwordHash(password);
+    if (h.length()) {
+      cfg.admin_pass_hash = h;
+      saveConfig(cfg);
+      Serial.println("Admin-Passwort auf PBKDF2 umgestellt.");
+    }
+  }
+  return true;
+}
+
+bool authSetAdminPassword(AppConfig &cfg, const String &password) {
+  const String h = passwordHash(password);
+  if (!h.length()) return false;
+  cfg.admin_pass_hash = h;
+  cfg.force_pw_change = false;
+  return saveConfig(cfg);
 }
 
 bool requireAuth(WebServer &server, AppConfig &cfg) {
@@ -89,8 +190,16 @@ bool requireAuth(WebServer &server, AppConfig &cfg) {
 
 
 bool passwordIsDefault(const AppConfig &cfg) {
-  // Default-Passwort ist "admin"
-  return (cfg.admin_pass_hash.length() == 0) || (cfg.admin_pass_hash == sha1Hex("admin"));
+  // Default-Passwort ist "admin". Ergebnis cachen: requireAuth() fragt das bei jedem Request,
+  // und PBKDF2 kostet ~0,1 s.
+  static String cachedHash;
+  static bool cachedResult = true;
+  if (cfg.admin_pass_hash.length() == 0) return true;
+  if (cfg.admin_pass_hash != cachedHash) {
+    cachedHash = cfg.admin_pass_hash;
+    cachedResult = passwordVerify("admin", cfg.admin_pass_hash);
+  }
+  return cachedResult;
 }
 
 void handleForcePassword(WebServer &server, AppConfig &cfg) {
@@ -107,14 +216,14 @@ void handleForcePassword(WebServer &server, AppConfig &cfg) {
     String p1 = server.arg("pass1");
     String p2 = server.arg("pass2");
 
-    if (p1.length() < 6) {
-      msg = "Passwort muss mindestens 6 Zeichen lang sein.";
+    if (p1.length() < 8 || p1.length() > 64) {
+      msg = "Passwort muss 8 bis 64 Zeichen lang sein.";
     } else if (p1 != p2) {
       msg = "Passwörter stimmen nicht überein.";
+    } else if (p1 == "admin") {
+      msg = "Bitte ein anderes Passwort als „admin“ wählen.";
     } else {
-      cfg.admin_pass_hash = sha1Hex(p1);
-      cfg.force_pw_change = false;
-      saveConfig(cfg);
+      authSetAdminPassword(cfg, p1);
 
       server.sendHeader("Location", "/login", true);
       server.send(302, "text/plain", "");
@@ -158,23 +267,33 @@ void handleLogin(WebServer &server, AppConfig &cfg) {
     String user = server.arg("user");
     String pass = server.arg("pass");
 
-    // 1) Benutzer/Passwort prüfen
+    // 1) Benutzer/Passwort prüfen (mit Fehlversuch-Bremse)
     if (!server.hasArg("license_ok")) {
       err = "Bitte Lizenz akzeptieren, um fortzufahren.";
       doLogin = false;
-    } else if (user == cfg.admin_user && sha1Hex(pass) == cfg.admin_pass_hash) {
-      doLogin = true;
     } else {
-      err = "Login fehlgeschlagen (User/Passwort falsch).";
+      String pwErr;
+      const uint32_t wait = lockRemainingMs();
+      if (wait) {
+        err = "Zu viele Fehlversuche – bitte noch " + String((wait + 999) / 1000) + " s warten.";
+      } else if (user != cfg.admin_user) {
+        registerFail();
+        err = "Login fehlgeschlagen (User/Passwort falsch).";
+      } else if (authCheckAdminPassword(cfg, pass, pwErr)) {
+        doLogin = true;
+      } else {
+        err = (pwErr == "Passwort falsch.") ? String("Login fehlgeschlagen (User/Passwort falsch).") : pwErr;
+      }
     }
 
 
     // 3) Erfolgreich → Session setzen
     if (doLogin) {
-      sessionToken = randomToken();
+      const String token = randomToken();
+      addSession(token);
       server.sendHeader(
         "Set-Cookie",
-        String(COOKIE_NAME) + "=" + sessionToken + "; Path=/; Max-Age=86400; SameSite=Lax"
+        String(COOKIE_NAME) + "=" + token + "; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax"
       );
       server.sendHeader("Location", "/", true);
       server.send(302, "text/plain", "");
@@ -222,8 +341,11 @@ html +=
 }
 
 void handleLogout(WebServer &server) {
-  sessionToken = "";
-  server.sendHeader("Set-Cookie", String(COOKIE_NAME) + "=; Path=/; Max-Age=0");
+  const String value = cookieToken(server);
+  for (int i = 0; i < MAX_SESSIONS; i++) {
+    if (value.length() && sessions[i].token == value) sessions[i].token = "";
+  }
+  server.sendHeader("Set-Cookie", String(COOKIE_NAME) + "=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
   server.sendHeader("Location", "/login", true);
   server.send(302, "text/plain", "");
 }
