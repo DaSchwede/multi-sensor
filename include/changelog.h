@@ -4,6 +4,13 @@
 // Versionshistorie für die Über-Seite (in der Firmware, damit kein LittleFS-Upload nötig ist).
 // Format: Versionszeile, darunter Punkte mit "- ", Leerzeile zwischen Versionen.
 static const char CHANGELOG_TXT[] PROGMEM = R"CL(
+1.5.0
+- Neues Design: ruhigere Farben, schmalerer Kopf, aktiver Menüpunkt grün unterstrichen, flache Karten, Werte rechtsbündig
+- Startseite: Raumluft-Karte mit großem CO₂-Wert, Lüftungs-Ampel (gut / bald lüften / jetzt lüften) und Skala
+- Temperatur, Luftfeuchte und Luftdruck mit Einordnung in Worten (z.B. angenehm, trocken)
+- Zahlen mit Dezimalkomma, Anzeige welcher Sensor fehlt
+- Bessere Darstellung am Handy
+
 1.4.0
 - Neue Seite Sensoren: Temperatur-Offset, CO₂-Kalibrierung an Frischluft, Luftdruck-Kompensation, automatische Selbstkalibrierung
 - Ausgefallene Sensoren werden erkannt (keine eingefrorenen Werte mehr) und automatisch neu gesucht
